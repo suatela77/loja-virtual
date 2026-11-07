@@ -113,6 +113,13 @@ header.top{background:linear-gradient(90deg,#ff3d81,#ff8a00 60%,#ffd23f)}
 .stat:nth-child(1){background:linear-gradient(135deg,var(--orange),var(--pink))}
 .stat:nth-child(2){background:linear-gradient(135deg,var(--blue),var(--violet))}
 .stat:nth-child(3){background:linear-gradient(135deg,var(--teal),#16c060)}
+
+.fx{display:inline-block;width:34px;height:32px;vertical-align:middle;margin-right:6px}.fx svg{width:100%;height:100%;display:block}
+.logo{display:flex;align-items:center}
+.heroflex{display:flex;align-items:center;gap:8px;justify-content:space-between;margin-bottom:6px}
+.mascote{width:130px;flex:none;filter:drop-shadow(0 8px 0 #0002);animation:bal 3s ease-in-out infinite}
+@keyframes bal{50%{transform:translateY(-6px) rotate(3deg)}}
+@media (prefers-reduced-motion:reduce){.mascote{animation:none}}
 @media print{header.top,.bar,.noprint,.foot{display:none!important}body{background:#fff;padding:0}.recibo{border-color:#000}}
 </style>
 </head>
@@ -164,12 +171,14 @@ function addCart(id,q=1){const i=cart.find(x=>x.id===id);i?i.qtd+=q:cart.push({i
 const prod=id=>prods.find(p=>p.id===id);
 const cartTotal=()=>cart.reduce((a,i)=>a+(prod(i.id)?.preco||0)*i.qtd,0);
 const foto=p=>p.imagens&&p.imagens[0];
+const FOX=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 130"><polygon points="22,10 52,38 18,58" fill="#ff8a00" stroke="#7a3b00" stroke-width="4" stroke-linejoin="round"/><polygon points="118,10 88,38 122,58" fill="#ff8a00" stroke="#7a3b00" stroke-width="4" stroke-linejoin="round"/><polygon points="26,22 42,38 25,48" fill="#ffd0a0"/><polygon points="114,22 98,38 115,48" fill="#ffd0a0"/><path d="M70 28 C108 28 124 52 118 78 C112 100 90 112 70 112 C50 112 28 100 22 78 C16 52 32 28 70 28Z" fill="#ff8a00" stroke="#7a3b00" stroke-width="4"/><path d="M22 78 C30 70 46 74 70 96 C94 74 110 70 118 78 C112 100 90 112 70 112 C50 112 28 100 22 78Z" fill="#fff"/><ellipse cx="50" cy="60" rx="7" ry="9" fill="#2a1b4d"/><ellipse cx="90" cy="60" rx="7" ry="9" fill="#2a1b4d"/><circle cx="52.5" cy="56" r="2.6" fill="#fff"/><circle cx="92.5" cy="56" r="2.6" fill="#fff"/><ellipse cx="36" cy="78" rx="8" ry="5" fill="#ff3d81" opacity=".45"/><ellipse cx="104" cy="78" rx="8" ry="5" fill="#ff3d81" opacity=".45"/><ellipse cx="70" cy="80" rx="8" ry="6" fill="#2a1b4d"/><path d="M58 90 Q70 102 82 90" fill="none" stroke="#2a1b4d" stroke-width="4" stroke-linecap="round"/><g transform="translate(96 86)"><rect x="0" y="16" width="30" height="26" rx="9" fill="#ffd0a0" stroke="#7a3b00" stroke-width="3.5"/><path d="M8 18 L8 4 Q8 -4 15 -2 Q20 0 18 8 L17 16Z" fill="#ffd0a0" stroke="#7a3b00" stroke-width="3.5" stroke-linejoin="round"/></g></svg>`;
+function setLogo(){$('#logo').innerHTML='<span class="fx">'+FOX+'</span>'+h(cfg.nome)}
 const emoji=['🎁','🛍️','✨','🧴','💧','🎀'];
 
 async function load(){
   try{const c=await api('/rest/v1/loja_config?id=eq.1&select=*');if(c&&c[0])cfg=c[0]}catch(e){}
   try{prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc')}catch(e){prods=[]}
-  document.title=cfg.nome;$('#logo').textContent='🌈 '+cfg.nome;
+  document.title=cfg.nome;setLogo();
   $('#foot').innerHTML=h(cfg.nome)+' · <a href="#/pedido">Acompanhar pedido</a> · <a href="#/admin">Área da loja</a>';
   saveCart();
   const z=$('#zap');if(cfg.whatsapp){z.href=waLink('Olá! Vim pela loja '+cfg.nome+' 😊');z.hidden=false}
@@ -182,7 +191,7 @@ function vHome(){
   const cats=[...new Set(ativos.map(p=>p.categoria).filter(Boolean))];
   let lista=ativos.filter(p=>(!cat||p.categoria===cat)&&(!busca||(p.nome+' '+p.descricao).toLowerCase().includes(busca.toLowerCase())));
   $('#app').innerHTML=`${cfg.aviso?`<div class="aviso">${h(cfg.aviso)}</div>`:''}
-  <section class="hero"><div class="wrap"><h1>${h(cfg.nome)}</h1><p>${h(cfg.slogan)}</p>
+  <section class="hero"><div class="wrap"><div class="heroflex"><div><h1>${h(cfg.nome)}</h1><p>${h(cfg.slogan)}</p></div><div class="mascote">${FOX}</div></div>
   <div class="search"><input id="q" placeholder="O que você procura?" value="${h(busca)}"><button class="btn small" id="qb">Buscar</button></div></div></section>
   <svg class="wave" viewBox="0 0 1440 90" preserveAspectRatio="none"><path fill="#fff7fb" d="M0 50 C240 100 480 0 720 40 C960 80 1200 10 1440 50 L1440 90 L0 90Z"/></svg>
   <div class="wrap"><div class="perks"><div class="perk"><span>💬</span>Compra fácil pelo WhatsApp</div><div class="perk"><span>💸</span>Pague com Pix</div><div class="perk"><span>🎁</span>Produtos selecionados</div></div></div>
@@ -283,7 +292,7 @@ async function vRecibo(cod){
   if(!p){location.hash='#/';return}
   const d=new Date(p.created_at).toLocaleDateString('pt-BR');
   const txt=`Recibo ${cfg.nome} - Pedido ${p.codigo}\nCliente: ${p.cliente_nome}\n${p.itens.map(i=>`${i.qtd}x ${i.nome} - ${brl(i.preco*i.qtd)}`).join('\n')}\nTotal: ${brl(p.total)}\nStatus: ${(STATUS[p.status]||[p.status])[0]}`;
-  $('#app').innerHTML=`<div class="wrap"><div class="recibo"><div style="text-align:center"><h2>🌈 ${h(cfg.nome)}</h2><b>RECIBO DE PAGAMENTO</b><div class="muted">Pedido ${h(p.codigo)} · ${d}</div></div>
+  $('#app').innerHTML=`<div class="wrap"><div class="recibo"><div style="text-align:center"><h2>🦊 ${h(cfg.nome)}</h2><b>RECIBO DE PAGAMENTO</b><div class="muted">Pedido ${h(p.codigo)} · ${d}</div></div>
   <p><b>Cliente:</b> ${h(p.cliente_nome)}<br><b>Telefone:</b> ${h(p.cliente_tel)}${p.endereco?`<br><b>Entrega:</b> ${h(p.endereco)}`:''}</p>
   <table>${p.itens.map(i=>`<tr><td>${i.qtd} x ${h(i.nome)}</td><td>${brl(i.preco*i.qtd)}</td></tr>`).join('')}<tr><td><b>TOTAL</b></td><td><b style="font-size:20px">${brl(p.total)}</b></td></tr></table>
   <p style="text-align:center"><span class="tag" style="background:${(STATUS[p.status]||[0,'#999'])[1]}">${(STATUS[p.status]||[p.status])[0]}</span></p>
@@ -379,7 +388,7 @@ function aConfig(){
   <label for="cpi">Cidade</label><input class="f" id="cpi" value="${h(cfg.pix_cidade)}">
   <p></p><button class="btn block" id="cs">Salvar</button></div>`;
   $('#cs').onclick=async()=>{const n={nome:$('#cnm').value,slogan:$('#csl').value,whatsapp:$('#cwa').value,aviso:$('#cav').value,pix_chave:$('#cpx').value.trim(),pix_nome:$('#cpn').value,pix_cidade:$('#cpi').value};
-    try{await api('/rest/v1/loja_config?id=eq.1',{method:'PATCH',json:n});cfg={...cfg,...n};document.title=cfg.nome;$('#logo').textContent='🌈 '+cfg.nome;toast('Salvo! ✅')}catch(e){toast(e.message)}};
+    try{await api('/rest/v1/loja_config?id=eq.1',{method:'PATCH',json:n});cfg={...cfg,...n};document.title=cfg.nome;setLogo();toast('Salvo! ✅')}catch(e){toast(e.message)}};
 }
 
 /* ---------- rotas ---------- */
