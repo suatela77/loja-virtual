@@ -53,7 +53,7 @@ header.top .wrap{display:flex;align-items:center;gap:10px;padding-top:10px;paddi
 .btn.block{display:block;width:100%}
 .box{background:#fff;border-radius:22px;padding:16px;box-shadow:0 6px 18px #2a1b4d14;margin:14px 0}
 .gal{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;border-radius:22px}
-.gal img{width:100%;max-width:520px;flex:0 0 100%;scroll-snap-align:center;aspect-ratio:1;object-fit:cover;border-radius:22px}
+.gal img{cursor:zoom-in;width:100%;max-width:520px;flex:0 0 100%;scroll-snap-align:center;aspect-ratio:1;object-fit:cover;border-radius:22px}
 .qty{display:inline-flex;align-items:center;gap:10px;background:#f3e8ff;border-radius:999px;padding:4px}
 .qty button{width:34px;height:34px;border:0;border-radius:50%;background:#fff;font-weight:800;font-size:18px;cursor:pointer;color:var(--violet)}
 .row{display:flex;gap:12px;align-items:center}
@@ -121,6 +121,12 @@ header.top{background:linear-gradient(90deg,#ff3d81,#ff8a00 60%,#ffd23f)}
 .mascote img{width:100%;display:block}.mascote{width:150px;flex:none;filter:drop-shadow(0 8px 0 #0002);animation:bal 3s ease-in-out infinite}
 @keyframes bal{50%{transform:translateY(-6px) rotate(3deg)}}
 @media (prefers-reduced-motion:reduce){.mascote{animation:none}}
+.lb{position:fixed;inset:0;z-index:100;background:#000e;display:flex;align-items:center;justify-content:center;touch-action:pinch-zoom}
+.lb img{max-width:100%;max-height:100%;object-fit:contain}
+.lb button{position:absolute;border:0;border-radius:50%;width:48px;height:48px;font-size:24px;font-weight:800;background:#fff;color:var(--ink);cursor:pointer;box-shadow:0 4px 14px #0006}
+.lb .x{top:calc(14px + env(safe-area-inset-top,0px));right:14px}
+.lb .pv{left:10px;top:50%}.lb .nx{right:10px;top:50%}
+.lb .ct{position:absolute;bottom:calc(18px + env(safe-area-inset-bottom,0px));left:0;right:0;text-align:center;color:#fff;font-weight:800}
 @media print{header.top,.bar,.noprint,.foot{display:none!important}body{background:#fff;padding:0}.recibo{border-color:#000}}
 </style>
 </head>
@@ -215,8 +221,17 @@ function vProduto(id){
   <p style="white-space:pre-wrap;line-height:1.5">${h(p.descricao)}</p></div></div>
   <div class="bar"><div class="price">${brl(p.preco)}</div>${p.estoque===0?'<span class="muted grow">Esgotado</span>':`<button class="btn grow" id="add">Colocar no carrinho 🛒</button>`}</div>`;
   const a=$('#add');if(a)a.onclick=()=>addCart(p.id);
+  document.querySelectorAll('.gal img').forEach((im,i)=>im.onclick=()=>lightbox(p.imagens,i));
 }
 
+function lightbox(imgs,i){
+  const d=document.createElement('div');d.className='lb';
+  const draw=()=>{d.innerHTML=`<img src="${h(imgs[i])}" alt=""><button class="x" aria-label="Fechar">✕</button>${imgs.length>1?`<button class="pv" aria-label="Anterior">‹</button><button class="nx" aria-label="Próxima">›</button><div class="ct">${i+1} / ${imgs.length}</div>`:''}`;
+    d.querySelector('.x').onclick=()=>d.remove();
+    if(imgs.length>1){d.querySelector('.pv').onclick=()=>{i=(i-1+imgs.length)%imgs.length;draw()};d.querySelector('.nx').onclick=()=>{i=(i+1)%imgs.length;draw()}}};
+  let x0=null;d.ontouchstart=e=>{x0=e.touches.length===1?e.touches[0].clientX:null};
+  d.ontouchend=e=>{if(x0===null||imgs.length<2)return;const dx=e.changedTouches[0].clientX-x0;if(Math.abs(dx)>60){i=(i+(dx<0?1:-1)+imgs.length)%imgs.length;draw()}x0=null};
+  draw();document.body.appendChild(d)}
 function vCarrinho(){
   cart=cart.filter(i=>prod(i.id));saveCart();
   if(!cart.length){$('#app').innerHTML=`<div class="wrap empty"><div class="big">🛒</div><h2>Seu carrinho está vazio</h2><p class="muted">Escolha algo lindo na vitrine!</p><a class="btn" href="#/">Ver produtos</a></div>`;return}
