@@ -660,9 +660,22 @@ function aFrete(){
       if(!cepOk&&txtK&&!COORD.test(txtK)&&!/\d{5}-?\d{3}/.test(txtK)){
         const vl=await viaList(txtK);
         if(vl.length){
-          $('#kres').innerHTML=`<div class="box" style="background:#f3ecff"><b>${vl.length>1?'Achei mais de um endereço. Toque no correto:':'Confirme o endereço:'}</b>${vl.map((o,i)=>`<button class="btn small ghost block" style="margin-top:8px;text-align:left" data-vl="${i}">📍 ${h(o.rua)} — <b>${h(o.bairro||'sem bairro')}</b> <span class="muted">(CEP ${h(fmtCep(o.cep))})</span></button>`).join('')}<p class="muted">Se souber o número, preencha o campo "Número" antes de tocar.</p></div>`;
-          document.querySelectorAll('[data-vl]').forEach(bt=>bt.onclick=()=>{const o=vl[+bt.dataset.vl];$('#kcep').value=o.cep;$('#kend').value='';$('#kgo').click()});
-          b.disabled=false;b.textContent='Calcular';return}
+          const cu=await cidadeUF()||{cidade:'',uf:''};
+          const ogv=await locate('','',cfg.frete_origem||'Cabo Frio, RJ');if(ogv.pt)BIAS=ogv.pt;
+          const pintar=(fim)=>{
+            $('#kres').innerHTML=`<div class="box" style="background:#f3ecff"><b>${vl.length>1?'Achei mais de um endereço. Toque no correto:':'Confirme o endereço:'}</b>${fim?'':'<div class="muted">Calculando as distâncias...</div>'}${vl.map((o,i)=>`<button class="btn small ghost block" style="margin-top:8px;text-align:left" data-vl="${i}">📍 ${h(o.rua)} — <b>${h(o.bairro||'sem bairro')}</b> <span class="muted">(CEP ${h(fmtCep(o.cep))}${o.km!=null?' · ~'+String(o.km).replace('.',',')+' km':''})</span></button>`).join('')}<p class="muted">Se souber o número, preencha o campo "Número" antes de tocar.</p></div>`;
+            document.querySelectorAll('[data-vl]').forEach(bt=>bt.onclick=()=>{const o=vl[+bt.dataset.vl];$('#kcep').value=o.cep;$('#kend').value='';$('#kgo').click()})};
+          pintar(false);b.disabled=false;b.textContent='Calcular';
+          if(ogv.pt){
+            for(const o of vl){
+              let pt=null;
+              try{pt=await geo(`${o.rua}, ${o.bairro}, ${cu.cidade}, ${cu.uf}`);if(!pt){await new Promise(z=>setTimeout(z,1100));pt=await geo(`${o.bairro}, ${cu.cidade}, ${cu.uf}`)}}catch(e){}
+              if(pt){o.km=Math.round(hav(ogv.pt,pt)*1.3*10)/10}
+              if(!ls.get('geo2:'+`${o.rua}, ${o.bairro}, ${cu.cidade}, ${cu.uf}`.toLowerCase()+(BIAS?'|'+BIAS.lat.toFixed(2)+','+BIAS.lon.toFixed(2):''),null))await new Promise(z=>setTimeout(z,1100));
+              pintar(false)}
+            vl.sort((a,b)=>(a.km==null)-(b.km==null)||a.km-b.km);
+          }
+          pintar(true);return}
         const og=await locate('','',cfg.frete_origem||'Cabo Frio, RJ');if(og.pt)BIAS=og.pt;
         const op=await geoMulti(txtK,og.pt);
         if(!op.length)throw new Error('Não encontrei esse endereço perto da loja. Confira o nome da rua ou use o CEP.');
