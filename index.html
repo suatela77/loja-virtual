@@ -187,6 +187,13 @@ header.top .wrap{padding-top:6px!important;padding-bottom:6px!important}
 .sec{font-size:22px!important}
 .logo{font-size:19px!important}
 .perk{font-size:12.5px!important}
+
+/* v8: fonte maior e texto justificado */
+.pbody h3{font-size:14.5px!important;min-height:40px!important;text-align:justify!important;text-justify:inter-word;hyphens:auto;line-height:1.25}
+.pbuy .price,.price{font-size:15.5px!important}
+.pbuy button{font-size:15.5px!important}
+.chip{font-size:15px!important}
+.sec{font-size:23px!important}
 @media(min-width:700px){.pbuy button{height:38px!important;width:100%!important}}
 @media(min-width:700px){.grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))!important;gap:12px!important}.pbody h3{font-size:14px!important}.pbuy button{width:36px!important;height:36px!important}}
 
@@ -297,7 +304,7 @@ function vProduto(id){
   ${p.imagens?.length?`<div class="gal">${p.imagens.map(u=>`<img src="${h(u)}" alt="">`).join('')}</div>`:`<div class="box empty"><div class="big">🎁</div></div>`}
   <div class="box"><h1>${h(p.nome)}</h1><div class="price" style="font-size:32px;margin:8px 0">${brl(p.preco)}</div>
   ${p.categoria&&p.categoria.trim()?`<span class="tag" style="background:var(--violet)">${h(p.categoria)}</span>`:''}
-  <p style="white-space:pre-wrap;line-height:1.5">${h(p.descricao)}</p></div></div>
+  <p style="white-space:pre-wrap;line-height:1.5;text-align:justify;font-size:17px">${h(p.descricao)}</p></div></div>
   <div class="bar"><div class="price">${brl(p.preco)}</div>${p.estoque===0?'<span class="muted grow">Esgotado</span>':`<button class="btn grow" id="add">Colocar no carrinho 🛒</button>`}</div>`;
   const a=$('#add');if(a)a.onclick=()=>addCart(p.id);
   document.querySelectorAll('.gal img').forEach((im,i)=>im.onclick=()=>lightbox(p.imagens,i));
