@@ -344,28 +344,35 @@ function hav(a,b){const R=6371,t=x=>x*Math.PI/180,dl=t(b.lat-a.lat),dn=t(b.lon-a
 async function distKm(a,b){
   try{const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`);const d=await r.json();if(d&&d.routes&&d.routes[0])return{km:d.routes[0].distance/1000,exato:true}}catch(e){}
   return{km:hav(a,b)*1.3,exato:false}}
-async function freteCore(cep,num,txt){
+const COORD=/(-?\d{1,3}\.\d{3,})\s*[,;]\s*(-?\d{1,3}\.\d{3,})/;
+const fmtCep=c=>c.replace(/(\d{5})(\d{3})/,'$1-$2');
+async function locate(cep,num,txt){
   cep=(cep||'').replace(/\D/g,'');num=(num||'').trim();txt=(txt||'').trim();
+  const mc=txt.match(COORD);if(mc)return{pt:{lat:+mc[1],lon:+mc[2]},end:txt,aprox:false};
+  if(cep.length!==8){const m=txt.match(/\b(\d{5})-?(\d{3})\b/);if(m){cep=m[1]+m[2];num=num||txt.replace(m[0],'').replace(/^[\s,\-–]+|[\s,\-–]+$/g,'');txt=''}}
   if(cep.length!==8&&!txt)throw new Error('Digite o CEP (8 números) ou o endereço.');
   let cands=[],end=txt;
   if(cep.length===8){
     let v=null;try{const r=await fetch('https://viacep.com.br/ws/'+cep+'/json/');v=await r.json()}catch(e){}
     if(v&&!v.erro){
       const rua=v.logradouro||'',bai=v.bairro||'',cid=v.localidade||'',uf=v.uf||'';
-      end=`${rua}${num?', '+num:''}${bai?' - '+bai:''}, ${cid}/${uf}, CEP ${cep.replace(/(\d{5})(\d{3})/,'$1-$2')}`;
+      end=`${rua}${num?', '+num:''}${bai?' - '+bai:''}, ${cid}/${uf}, CEP ${fmtCep(cep)}`;
       cands=[`${rua}${num?', '+num:''}, ${bai}, ${cid}, ${uf}`,`${rua}, ${cid}, ${uf}`,`${bai}, ${cid}, ${uf}`,`${cid}, ${uf}`]}
-    else cands=[cep.replace(/(\d{5})(\d{3})/,'$1-$2')+', Brasil']}
-  if(txt&&cep.length!==8)cands=[txt,txt.replace(/\d{5}-?\d{3}/,'')];
+    else cands=[fmtCep(cep)+', Brasil']}
+  else cands=[txt,txt.replace(/\d{5}-?\d{3}/,'')];
   cands=cands.filter(x=>x&&x.trim());
-  const og=await geo(cfg.frete_origem||'Cabo Frio, RJ');
-  if(!og)throw new Error('Não consegui localizar o endereço de saída da loja. Confira em Loja > Frete.');
-  let dest=null,aprox=false;
-  for(let i=0;i<cands.length&&!dest;i++){dest=await geo(cands[i]);if(dest&&i>=2)aprox=true;if(!dest)await new Promise(z=>setTimeout(z,1100))}
-  if(!dest)throw new Error('Não encontrei esse endereço. Confira o CEP ou escreva rua, número e cidade.');
-  const d=await distKm(og,dest);
+  let pt=null,aprox=false;
+  for(let i=0;i<cands.length&&!pt;i++){pt=await geo(cands[i]);if(pt&&i>=2)aprox=true;if(!pt)await new Promise(z=>setTimeout(z,1100))}
+  return{pt,end,aprox}}
+async function freteCore(cep,num,txt){
+  const o=await locate('','',cfg.frete_origem||'Cabo Frio, RJ');
+  if(!o.pt)throw new Error('Não consegui localizar o endereço de saída. Confira na aba Frete.');
+  const d0=await locate(cep,num,txt);
+  if(!d0.pt)throw new Error('Não encontrei esse endereço. Confira o CEP ou escreva rua, número e cidade.');
+  const d=await distKm(o.pt,d0.pt);
   let km=d.km*(cfg.frete_volta?2:1);km=Math.round(km*10)/10;
   let valor=Math.max(Number(cfg.frete_min)||0,km*Number(cfg.frete_km));valor=Math.round(valor*100)/100;
-  return{tipo:'entrega',km,valor,end,desc:`Frete (${km.toString().replace('.',',')} km)`,aprox:aprox||!d.exato}}
+  return{tipo:'entrega',km,valor,end:d0.end,desc:`Frete (${km.toString().replace('.',',')} km)`,aprox:d0.aprox||o.aprox||!d.exato}}
 async function calcFrete(){
   const msg=$('#fmsg'),btn=$('#fcalc');
   btn.disabled=true;btn.textContent='Calculando...';msg.textContent='';
@@ -560,7 +567,8 @@ function aForm(){
 function aFrete(){
   const num=v=>String(v??'').replace('.',',');
   $('#ad').innerHTML=`<div class="box"><h3>Valores do frete ⚙️</h3>
-  <label for="kor">Endereço de saída (de onde sai a entrega)</label><textarea class="f" id="kor" rows="3" style="min-height:84px" placeholder="Rua, número, bairro, cidade">${h(cfg.frete_origem||'Cabo Frio, RJ')}</textarea>
+  <label for="kor">Endereço de saída (de onde sai a entrega)</label><p class="muted" style="margin:0 0 4px">Pode ser o CEP (ex.: 28905-000, 120), um endereço completo ou a sua localização.</p><textarea class="f" id="kor" rows="3" style="min-height:84px" placeholder="CEP ou rua, número, bairro, cidade">${h(cfg.frete_origem||'Cabo Frio, RJ')}</textarea>
+  <button class="btn small violet" id="kgps" type="button">📍 Usar minha localização</button> <span class="muted" id="kgm"></span>
   <label for="kkm">Valor por km (R$)</label><input class="f" id="kkm" inputmode="decimal" value="${num(cfg.frete_km)}" placeholder="Ex.: 2,50">
   <label for="kmn">Frete mínimo (R$)</label><input class="f" id="kmn" inputmode="decimal" value="${num(cfg.frete_min)}" placeholder="Ex.: 10">
   <label><input type="checkbox" id="kvt" ${cfg.frete_volta?'checked':''}> Cobrar ida e volta (dobra a distância)</label>
@@ -571,6 +579,17 @@ function aFrete(){
   <label for="kend">Ou o endereço completo do cliente</label><textarea class="f" id="kend" rows="3" style="min-height:84px" placeholder="Rua, número, bairro, cidade"></textarea>
   <p></p><button class="btn block" id="kgo">Calcular</button><p class="muted" id="kmsg"></p>
   <div id="kres"></div></div>`;
+  $('#kgps').onclick=()=>{
+    const m=$('#kgm');
+    if(!navigator.geolocation){m.textContent='Este aparelho não permite localização.';return}
+    m.textContent='Procurando você...';
+    navigator.geolocation.getCurrentPosition(async pos=>{
+      const la=pos.coords.latitude,lo=pos.coords.longitude;let nome='Minha localização';
+      try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&lat=${la}&lon=${lo}`,{headers:{'Accept-Language':'pt-BR'}});const d=await r.json();if(d&&d.display_name)nome=d.display_name.split(',').slice(0,4).join(',').trim()}catch(e){}
+      const t=`${nome} (${la.toFixed(5)}, ${lo.toFixed(5)})`;$('#kor').value=t;
+      cfg={...cfg,frete_origem:t};api('/rest/v1/loja_config?id=eq.1',{method:'PATCH',json:{frete_origem:t}}).then(()=>{m.textContent='Localização salva ✅'}).catch(e=>{m.textContent='Não consegui salvar: '+e.message})
+    },err=>{m.textContent=err.code===1?'Permissão negada. Libere a localização no navegador.':'Não consegui pegar a localização. Tente de novo.'},{enableHighAccuracy:true,timeout:15000});
+  };
   $('#kgo').onclick=async()=>{
     const pf=v=>parseFloat(String(v).replace(',','.'))||0;
     const nv={frete_origem:$('#kor').value.trim()||'Cabo Frio, RJ',frete_km:pf($('#kkm').value),frete_min:pf($('#kmn').value),frete_volta:$('#kvt').checked};
