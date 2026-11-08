@@ -153,9 +153,16 @@ header.top .wrap{padding-top:6px!important;padding-bottom:6px!important}
 .pbody{padding:6px 7px 8px!important;gap:4px!important}
 .pbody h3{font-size:12px!important;min-height:30px!important;line-height:1.2}
 .pbuy{gap:4px!important}
-.pbuy .price,.price{font-size:13px!important}
+.pbuy .price,.price{font-size:12.5px!important}
 .pbuy .price{padding:1px 7px!important}
 .pbuy button{width:30px!important;height:30px!important;font-size:14px!important}
+
+/* v4: nao cortar */
+.pbuy{flex-wrap:wrap!important;row-gap:4px}
+.pbuy .price{min-width:0;white-space:nowrap}
+.pbuy button{margin-left:auto}
+.pcard{min-width:0}
+.pbody h3{overflow-wrap:anywhere}
 @media(min-width:700px){.grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))!important;gap:12px!important}.pbody h3{font-size:14px!important}.pbuy button{width:36px!important;height:36px!important}}
 
 </style>
@@ -178,6 +185,8 @@ const h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt
 const brl=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const ls={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cfg={nome:'Minha Loja',slogan:'',whatsapp:'',pix_chave:'',pix_nome:'',pix_cidade:'',aviso:''};
+const catKey=c=>String(c||'').trim().replace(/\s+/g,' ').toLowerCase();
+const catOf=p=>String(p.categoria||'').trim().replace(/\s+/g,' ')||'Outros';
 let prods=[],cart=ls.get('loja_cart',[]),sess=ls.get('loja_sess',null),cat='',busca='';
 
 function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),2600)}
@@ -213,7 +222,7 @@ function setLogo(){$('#logo').innerHTML='<span class="fx"><img src="raposa-peque
 const emoji=['🎁','🛍️','✨','🧴','💧','🎀'];
 
 const SZ={pp:1,xs:1,p:2,pequeno:2,pequena:2,s:2,m:3,medio:3,media:3,'médio':3,'média':3,g:4,grande:4,l:4,gg:5,xl:5,xg:5};
-function szKey(n){n=String(n||'').trim();
+function szKey(n){n=String(n||'').trim().replace(/\b(bafeira|bafo|tamanho|com|de|da|do)\b/ig,' ').replace(/\s[àa]\s/ig,' ').replace(/\s+/g,' ').trim();
   let m=n.match(/(\d+(?:[.,]\d+)?)\s*(cm|mm|ml|lts?|litros?|kg|l|g|m)\b/i);
   if(m){const u=m[2].toLowerCase(),v=parseFloat(m[1].replace(',','.'));const f=(u==='cm'&&/[.,]/.test(m[1])&&v<10)?100:u==='ml'?.001:u==='mm'?.1:u==='m'?100:u==='g'?.001:1;return[(n.slice(0,m.index)+' '+n.slice(m.index+m[0].length)).replace(/\s+/g,' ').trim(),v*f]}
   m=n.match(/^(.*?)[\s\-–(]*\b(pp|xs|p|pequen[oa]|s|m|m[eé]di[oa]|g|grande|l|gg|xl|xg)\b[)\s]*$/i);
@@ -235,8 +244,8 @@ function waLink(texto){const n=(cfg.whatsapp||'').replace(/\D/g,'');const num=n.
 /* ---------- vitrine ---------- */
 function vHome(){
   const ativos=prods.filter(p=>p.ativo);
-  const cats=[...new Set(ativos.map(p=>p.categoria).filter(Boolean))];
-  let lista=ativos.filter(p=>(!cat||p.categoria===cat)&&(!busca||(p.nome+' '+p.descricao).toLowerCase().includes(busca.toLowerCase())));
+  const cm={};ativos.forEach(p=>{const c=catOf(p),k=catKey(c);if(!cm[k])cm[k]=c});const cats=Object.values(cm).sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
+  let lista=ativos.filter(p=>(!cat||catKey(catOf(p))===catKey(cat))&&(!busca||(p.nome+' '+p.descricao).toLowerCase().includes(busca.toLowerCase())));
   $('#app').innerHTML=`${cfg.aviso?`<div class="aviso">${h(cfg.aviso)}</div>`:''}
   <section class="hero"><div class="wrap"><div class="heroflex"><div><h1>${h(cfg.nome)}</h1><p>${h(cfg.slogan)}</p></div><div class="mascote"><img src="raposa.png" alt="Raposa mascote"></div></div>
   <div class="search"><input id="q" placeholder="O que você procura?" value="${h(busca)}"><button class="btn small" id="qb">Buscar</button></div></div></section>
@@ -257,7 +266,7 @@ function vProduto(id){
   $('#app').innerHTML=`<div class="wrap"><p><a href="#/">← Voltar</a></p>
   ${p.imagens?.length?`<div class="gal">${p.imagens.map(u=>`<img src="${h(u)}" alt="">`).join('')}</div>`:`<div class="box empty"><div class="big">🎁</div></div>`}
   <div class="box"><h1>${h(p.nome)}</h1><div class="price" style="font-size:32px;margin:8px 0">${brl(p.preco)}</div>
-  ${p.categoria?`<span class="tag" style="background:var(--violet)">${h(p.categoria)}</span>`:''}
+  ${p.categoria&&p.categoria.trim()?`<span class="tag" style="background:var(--violet)">${h(p.categoria)}</span>`:''}
   <p style="white-space:pre-wrap;line-height:1.5">${h(p.descricao)}</p></div></div>
   <div class="bar"><div class="price">${brl(p.preco)}</div>${p.estoque===0?'<span class="muted grow">Esgotado</span>':`<button class="btn grow" id="add">Colocar no carrinho 🛒</button>`}</div>`;
   const a=$('#add');if(a)a.onclick=()=>addCart(p.id);
@@ -402,6 +411,10 @@ function aProdutos(){
   document.querySelectorAll('[data-dp]').forEach(b=>b.onclick=async()=>{const p=prod(b.dataset.dp);if(!p||!confirm('Excluir o produto "'+p.nome+'"? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'DELETE'});prods=prods.filter(x=>x.id!==p.id);toast('Produto excluído');aProdutos()}catch(e){toast(e.message)}});
   document.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{adm.edit=JSON.parse(JSON.stringify(prod(b.dataset.e)));adm.files=[];aProdutos()});
 }
+function catOpts(cur){const m={};prods.forEach(x=>{const c=String(x.categoria||'').trim().replace(/\s+/g,' ');if(c&&!m[catKey(c)])m[catKey(c)]=c});
+  const c0=String(cur||'').trim().replace(/\s+/g,' ');if(c0&&!m[catKey(c0)])m[catKey(c0)]=c0;
+  const l=Object.values(m).sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
+  return `<option value="">— Sem categoria —</option>`+l.map(c=>`<option value="${h(c)}" ${catKey(c)===catKey(c0)?'selected':''}>${h(c)}</option>`).join('')+`<option value="__nova">➕ Nova categoria…</option>`}
 function aForm(){
   const p=adm.edit;
   $('#ad').innerHTML=`<div class="box"><h3>${p.id?'Editar produto':'Novo produto'}</h3>
@@ -409,16 +422,17 @@ function aForm(){
   <p><input type="file" id="pf" accept="image/*" multiple hidden><button class="btn small violet" id="pa">📷 Adicionar fotos</button> <span id="pn" class="muted"></span></p>
   <label for="pn1">Nome</label><input class="f" id="pn1" value="${h(p.nome)}">
   <label for="pp">Preço (R$)</label><input class="f" id="pp" inputmode="decimal" value="${p.preco}">
-  <label for="pc1">Categoria</label><input class="f" id="pc1" value="${h(p.categoria)}" placeholder="Ex.: Filtros">
+  <label for="pc1">Categoria</label><select class="f" id="pc1">${catOpts(p.categoria)}</select><input class="f" id="pc2" placeholder="Nome da nova categoria" style="display:none;margin-top:6px">
   <label for="pd">Descrição</label><textarea class="f" id="pd" rows="4">${h(p.descricao)}</textarea>
   <label for="pe">Estoque (deixe vazio para não controlar; 0 = esgotado)</label><input class="f" id="pe" inputmode="numeric" value="${p.estoque??''}">
   <label><input type="checkbox" id="pa1" ${p.ativo?'checked':''}> Mostrar na loja</label><p></p>
   <button class="btn block" id="ps">Salvar produto</button><p></p><button class="btn ghost block" id="pcx">Cancelar</button>
   ${p.id?'<p></p><button class="btn red block" id="pdx">Excluir produto</button>':''}</div>`;
+  $('#pc1').onchange=()=>{$('#pc2').style.display=$('#pc1').value==='__nova'?'block':'none';if($('#pc1').value==='__nova')$('#pc2').focus()};
   $('#pa').onclick=()=>$('#pf').click();
   $('#pf').onchange=e=>{adm.files=[...adm.files,...e.target.files];$('#pn').textContent=adm.files.length+' foto(s) para enviar'};
   document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{p.imagens.splice(+b.dataset.r,1);capture();aForm()});
-  const capture=()=>{p.nome=$('#pn1').value;p.preco=$('#pp').value;p.categoria=$('#pc1').value;p.descricao=$('#pd').value;p.estoque=$('#pe').value===''?null:parseInt($('#pe').value,10);p.ativo=$('#pa1').checked};
+  const capture=()=>{p.nome=$('#pn1').value;p.preco=$('#pp').value;p.categoria=$('#pc1').value==='__nova'?$('#pc2').value.trim():$('#pc1').value;p.descricao=$('#pd').value;p.estoque=$('#pe').value===''?null:parseInt($('#pe').value,10);p.ativo=$('#pa1').checked};
   $('#pcx').onclick=()=>{adm.edit=null;aProdutos()};
   if($('#pdx'))$('#pdx').onclick=async()=>{if(!$('#pdx').dataset.s){$('#pdx').dataset.s=1;$('#pdx').textContent='Tem certeza? Toque de novo';return}
     try{await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'DELETE'});prods=prods.filter(x=>x.id!==p.id);adm.edit=null;toast('Excluído');aProdutos()}catch(e){toast(e.message)}};
