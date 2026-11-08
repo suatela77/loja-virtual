@@ -173,6 +173,9 @@ header.top .wrap{padding-top:6px!important;padding-bottom:6px!important}
 .pbuy{flex-direction:column!important;align-items:stretch!important;margin-top:auto!important;gap:6px!important}
 .pbuy .price{text-align:center;align-self:stretch}
 .pbuy button{width:100%!important;height:34px!important;border-radius:12px!important;font-size:13px!important;font-weight:800;margin:0!important;box-shadow:0 4px 10px #ff3d8166!important;background:linear-gradient(135deg,#16c060,#00a884)!important}
+
+/* v6 botao centralizado */
+.pbuy button{display:flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;padding:0 6px!important;line-height:1!important;text-align:center!important;white-space:nowrap!important;font-family:inherit!important;letter-spacing:0!important;text-transform:none!important}
 @media(min-width:700px){.pbuy button{height:38px!important;width:100%!important}}
 @media(min-width:700px){.grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))!important;gap:12px!important}.pbody h3{font-size:14px!important}.pbuy button{width:36px!important;height:36px!important}}
 
@@ -272,7 +275,7 @@ function vHome(){
   document.querySelectorAll('.chip[data-c]').forEach(b=>b.onclick=()=>{cat=b.dataset.c;vHome()});
 }
 function card(p,i){const c=COLORS[i%COLORS.length];
-  return `<div class="pcard" style="--c:${c}"><a href="#/produto/${p.id}"><div class="pimg">${foto(p)?`<img loading="lazy" src="${h(foto(p))}" alt="${h(p.nome)}">`:emoji[i%emoji.length]}${p.estoque===0?'<i>Esgotado</i>':''}</div></a><div class="pbody"><a href="#/produto/${p.id}"><h3>${h(p.nome)}</h3></a><div class="pbuy"><span class="price">${brl(p.preco)}</span>${p.estoque===0?'':`<button data-add="${p.id}" aria-label="Adicionar ao carrinho">🛒 Comprar</button>`}</div></div></div>`}
+  return `<div class="pcard" style="--c:${c}"><a href="#/produto/${p.id}"><div class="pimg">${foto(p)?`<img loading="lazy" src="${h(foto(p))}" alt="${h(p.nome)}">`:emoji[i%emoji.length]}${p.estoque===0?'<i>Esgotado</i>':''}</div></a><div class="pbody"><a href="#/produto/${p.id}"><h3>${h(p.nome)}</h3></a><div class="pbuy"><span class="price">${brl(p.preco)}</span>${p.estoque===0?'':`<button data-add="${p.id}" aria-label="Adicionar ao carrinho"><span>🛒</span><span>Comprar</span></button>`}</div></div></div>`}
 
 function vProduto(id){
   const p=prod(id);if(!p){location.hash='#/';return}
