@@ -183,7 +183,14 @@ const FOX=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 130"><polygo
 function setLogo(){$('#logo').innerHTML='<span class="fx"><img src="raposa-pequena.png" alt=""></span>'+h(cfg.nome)}
 const emoji=['🎁','🛍️','✨','🧴','💧','🎀'];
 
-const ABC=(a,b)=>String(a.nome||'').localeCompare(String(b.nome||''),'pt-BR',{sensitivity:'base',numeric:true});
+const SZ={pp:1,xs:1,p:2,pequeno:2,pequena:2,s:2,m:3,medio:3,media:3,'médio':3,'média':3,g:4,grande:4,l:4,gg:5,xl:5,xg:5};
+function szKey(n){n=String(n||'').trim();
+  let m=n.match(/^(.*?)[\s\-–(]*\b(pp|xs|p|pequen[oa]|s|m|m[eé]di[oa]|g|grande|l|gg|xl|xg)\b[)\s]*$/i);
+  if(m)return[m[1].trim(),SZ[m[2].toLowerCase().replace('é','e')]||SZ[m[2].toLowerCase()]||0];
+  m=n.match(/^(.*?)[\s\-–(]*(\d+(?:[.,]\d+)?)\s*(l|lt|lts|litros?|ml|cm|kg|g|un|unid\w*)?[)\s]*$/i);
+  if(m)return[m[1].trim(),parseFloat(m[2].replace(',','.'))*(/ml/i.test(m[3]||'')?0.001:1)];
+  return[n,0]}
+const ABC=(a,b)=>{const x=szKey(a.nome),y=szKey(b.nome);return x[0].localeCompare(y[0],'pt-BR',{sensitivity:'base',numeric:true})||x[1]-y[1]||String(a.nome).localeCompare(String(b.nome),'pt-BR',{sensitivity:'base',numeric:true})};
 async function load(){
   try{const c=await api('/rest/v1/loja_config?id=eq.1&select=*');if(c&&c[0])cfg=c[0]}catch(e){}
   try{prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc');prods.sort(ABC)}catch(e){prods=[]}
@@ -353,7 +360,8 @@ function aPedidos(){
   ${p.endereco?`<div class="muted">📍 ${h(p.endereco)}</div>`:''}${p.obs?`<div class="muted">📝 ${h(p.obs)}</div>`:''}
   ${p.comprovante_url?`<p><a href="${h(p.comprovante_url)}" target="_blank"><img src="${h(p.comprovante_url)}" style="max-width:140px;border-radius:12px" alt="comprovante"></a></p>`:''}
   <select class="f" data-s="${p.id}">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===p.status?'selected':''}>${v[0]}</option>`).join('')}</select><p></p>
-  <a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a> <a class="btn small green" href="${waLink('').replace(/\/\/wa\.me\/\d*/,'//wa.me/55'+p.cliente_tel.replace(/\D/g,'').replace(/^55/,''))}${encodeURIComponent('Olá '+p.cliente_nome+'! Sobre seu pedido '+p.codigo+' na '+cfg.nome+': ')}">WhatsApp</a></div>`}).join(''):'<div class="empty"><div class="big">📭</div><h2>Nenhum pedido ainda</h2></div>';
+  <a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a> <button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button> <a class="btn small green" href="${waLink('').replace(/\/\/wa\.me\/\d*/,'//wa.me/55'+p.cliente_tel.replace(/\D/g,'').replace(/^55/,''))}${encodeURIComponent('Olá '+p.cliente_nome+'! Sobre seu pedido '+p.codigo+' na '+cfg.nome+': ')}">WhatsApp</a></div>`}).join(''):'<div class="empty"><div class="big">📭</div><h2>Nenhum pedido ainda</h2></div>';
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.del);if(!p||!confirm('Excluir o pedido '+p.codigo+' de '+p.cliente_nome+'? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_pedidos?id=eq.'+p.id,{method:'DELETE'});adm.pedidos=adm.pedidos.filter(x=>x.id!==p.id);toast('Pedido excluído');drawAdmin()}catch(e){toast(e.message)}});
   document.querySelectorAll('[data-s]').forEach(s=>s.onchange=async()=>{try{await api('/rest/v1/loja_pedidos?id=eq.'+s.dataset.s,{method:'PATCH',json:{status:s.value}});adm.pedidos.find(p=>p.id===s.dataset.s).status=s.value;toast('Status atualizado ✅');drawAdmin()}catch(e){toast(e.message)}});
 }
 function aProdutos(){
