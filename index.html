@@ -163,6 +163,17 @@ header.top .wrap{padding-top:6px!important;padding-bottom:6px!important}
 .pbuy button{margin-left:auto}
 .pcard{min-width:0}
 .pbody h3{overflow-wrap:anywhere}
+
+/* v5 */
+.perks{margin:14px 0 8px!important;position:relative;z-index:2}
+.chip,.sec,.chips .chip{text-transform:uppercase!important;letter-spacing:.3px}
+.sec{font-size:20px!important}
+.pcard{display:flex!important;flex-direction:column}
+.pbody{flex:1;display:flex!important;flex-direction:column}
+.pbuy{flex-direction:column!important;align-items:stretch!important;margin-top:auto!important;gap:6px!important}
+.pbuy .price{text-align:center;align-self:stretch}
+.pbuy button{width:100%!important;height:34px!important;border-radius:12px!important;font-size:13px!important;font-weight:800;margin:0!important;box-shadow:0 4px 10px #ff3d8166!important;background:linear-gradient(135deg,#16c060,#00a884)!important}
+@media(min-width:700px){.pbuy button{height:38px!important;width:100%!important}}
 @media(min-width:700px){.grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))!important;gap:12px!important}.pbody h3{font-size:14px!important}.pbuy button{width:36px!important;height:36px!important}}
 
 </style>
@@ -186,7 +197,9 @@ const brl=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL
 const ls={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cfg={nome:'Minha Loja',slogan:'',whatsapp:'',pix_chave:'',pix_nome:'',pix_cidade:'',aviso:''};
 const catKey=c=>String(c||'').trim().replace(/\s+/g,' ').toLowerCase();
-const catOf=p=>String(p.categoria||'').trim().replace(/\s+/g,' ')||'Outros';
+const CAT_ALIAS={'filtros':'Filtros de barro','filtro':'Filtros de barro'};
+const catNorm=c=>{c=String(c||'').trim().replace(/\s+/g,' ');return CAT_ALIAS[c.toLowerCase()]||c};
+const catOf=p=>catNorm(p.categoria)||'Outros';
 let prods=[],cart=ls.get('loja_cart',[]),sess=ls.get('loja_sess',null),cat='',busca='';
 
 function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),2600)}
@@ -259,7 +272,7 @@ function vHome(){
   document.querySelectorAll('.chip[data-c]').forEach(b=>b.onclick=()=>{cat=b.dataset.c;vHome()});
 }
 function card(p,i){const c=COLORS[i%COLORS.length];
-  return `<div class="pcard" style="--c:${c}"><a href="#/produto/${p.id}"><div class="pimg">${foto(p)?`<img loading="lazy" src="${h(foto(p))}" alt="${h(p.nome)}">`:emoji[i%emoji.length]}${p.estoque===0?'<i>Esgotado</i>':''}</div></a><div class="pbody"><a href="#/produto/${p.id}"><h3>${h(p.nome)}</h3></a><div class="pbuy"><span class="price">${brl(p.preco)}</span>${p.estoque===0?'':`<button data-add="${p.id}" aria-label="Adicionar ao carrinho">🛒</button>`}</div></div></div>`}
+  return `<div class="pcard" style="--c:${c}"><a href="#/produto/${p.id}"><div class="pimg">${foto(p)?`<img loading="lazy" src="${h(foto(p))}" alt="${h(p.nome)}">`:emoji[i%emoji.length]}${p.estoque===0?'<i>Esgotado</i>':''}</div></a><div class="pbody"><a href="#/produto/${p.id}"><h3>${h(p.nome)}</h3></a><div class="pbuy"><span class="price">${brl(p.preco)}</span>${p.estoque===0?'':`<button data-add="${p.id}" aria-label="Adicionar ao carrinho">🛒 Comprar</button>`}</div></div></div>`}
 
 function vProduto(id){
   const p=prod(id);if(!p){location.hash='#/';return}
@@ -411,8 +424,8 @@ function aProdutos(){
   document.querySelectorAll('[data-dp]').forEach(b=>b.onclick=async()=>{const p=prod(b.dataset.dp);if(!p||!confirm('Excluir o produto "'+p.nome+'"? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'DELETE'});prods=prods.filter(x=>x.id!==p.id);toast('Produto excluído');aProdutos()}catch(e){toast(e.message)}});
   document.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{adm.edit=JSON.parse(JSON.stringify(prod(b.dataset.e)));adm.files=[];aProdutos()});
 }
-function catOpts(cur){const m={};prods.forEach(x=>{const c=String(x.categoria||'').trim().replace(/\s+/g,' ');if(c&&!m[catKey(c)])m[catKey(c)]=c});
-  const c0=String(cur||'').trim().replace(/\s+/g,' ');if(c0&&!m[catKey(c0)])m[catKey(c0)]=c0;
+function catOpts(cur){const m={};prods.forEach(x=>{const c=catNorm(x.categoria);if(c&&!m[catKey(c)])m[catKey(c)]=c});
+  const c0=catNorm(cur);if(c0&&!m[catKey(c0)])m[catKey(c0)]=c0;
   const l=Object.values(m).sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
   return `<option value="">— Sem categoria —</option>`+l.map(c=>`<option value="${h(c)}" ${catKey(c)===catKey(c0)?'selected':''}>${h(c)}</option>`).join('')+`<option value="__nova">➕ Nova categoria…</option>`}
 function aForm(){
