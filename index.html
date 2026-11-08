@@ -275,7 +275,7 @@ function vHome(){
   document.querySelectorAll('.chip[data-c]').forEach(b=>b.onclick=()=>{cat=b.dataset.c;vHome()});
 }
 function card(p,i){const c=COLORS[i%COLORS.length];
-  return `<div class="pcard" style="--c:${c}"><a href="#/produto/${p.id}"><div class="pimg">${foto(p)?`<img loading="lazy" src="${h(foto(p))}" alt="${h(p.nome)}">`:emoji[i%emoji.length]}${p.estoque===0?'<i>Esgotado</i>':''}</div></a><div class="pbody"><a href="#/produto/${p.id}"><h3>${h(p.nome)}</h3></a><div class="pbuy"><span class="price">${brl(p.preco)}</span>${p.estoque===0?'':`<button data-add="${p.id}" aria-label="Adicionar ao carrinho"><span>🛒</span><span>Comprar</span></button>`}</div></div></div>`}
+  return `<div class="pcard" style="--c:${c}"><a href="#/produto/${p.id}"><div class="pimg">${foto(p)?`<img loading="lazy" src="${h(foto(p))}" alt="${h(p.nome)}">`:emoji[i%emoji.length]}${p.estoque===0?'<i>Esgotado</i>':''}</div></a><div class="pbody"><a href="#/produto/${p.id}"><h3>${h(p.nome)}</h3></a><div class="pbuy"><span class="price">${brl(p.preco)}</span>${p.estoque===0?'':`<button data-add="${p.id}" aria-label="Adicionar ao carrinho"><span>Comprar</span></button>`}</div></div></div>`}
 
 function vProduto(id){
   const p=prod(id);if(!p){location.hash='#/';return}
