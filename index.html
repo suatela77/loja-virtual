@@ -189,11 +189,12 @@ header.top .wrap{padding-top:6px!important;padding-bottom:6px!important}
 .perk{font-size:12.5px!important}
 
 /* v8: fonte maior e texto justificado */
-.pbody h3{font-size:14.5px!important;min-height:40px!important;text-align:justify!important;text-justify:inter-word;hyphens:none!important;-webkit-hyphens:none!important;word-break:normal!important;line-height:1.25}
+.pbody h3{font-size:14.5px!important;min-height:54px!important;text-align:left!important;hyphens:none!important;-webkit-hyphens:none!important;word-break:normal!important;line-height:1.25}
 .pbuy .price,.price{font-size:15.5px!important}
 .pbuy button{font-size:15.5px!important}
 .chip{font-size:15px!important}
 .sec{font-size:23px!important}
+.pbody h3{margin:0 0 6px!important}
 @media(min-width:700px){.pbuy button{height:38px!important;width:100%!important}}
 @media(min-width:700px){.grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))!important;gap:12px!important}.pbody h3{font-size:14px!important}.pbuy button{width:36px!important;height:36px!important}}
 
@@ -217,6 +218,7 @@ const h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt
 const brl=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const ls={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cfg={nome:'Minha Loja',slogan:'',whatsapp:'',pix_chave:'',pix_nome:'',pix_cidade:'',aviso:''};
+const nb=n=>h(n).replace(/(\d[\d.,]*)\s*(cm|mm|ml|kg|litros?|lts?|m|l|g)\b/gi,'<span style="white-space:nowrap">$1&nbsp;$2</span>').replace(/\b(tamanho)\s+([PMG]{1,2})\b/gi,'<span style="white-space:nowrap">$1&nbsp;$2</span>');
 const catKey=c=>String(c||'').trim().replace(/\s+/g,' ').toLowerCase();
 const CAT_ALIAS={'filtros':'Filtros de barro','filtro':'Filtros de barro'};
 const catNorm=c=>{c=String(c||'').trim().replace(/\s+/g,' ');return CAT_ALIAS[c.toLowerCase()]||c};
@@ -296,7 +298,7 @@ function vHome(){
   document.querySelectorAll('.chip[data-c]').forEach(b=>b.onclick=()=>{cat=b.dataset.c;vHome()});
 }
 function card(p,i){const c=COLORS[i%COLORS.length];
-  return `<div class="pcard" style="--c:${c}"><a href="#/produto/${p.id}"><div class="pimg">${foto(p)?`<img loading="lazy" src="${h(foto(p))}" alt="${h(p.nome)}">`:emoji[i%emoji.length]}${p.estoque===0?'<i>Esgotado</i>':''}</div></a><div class="pbody"><a href="#/produto/${p.id}"><h3>${h(p.nome)}</h3></a><div class="pbuy"><span class="price">${brl(p.preco)}</span>${p.estoque===0?'':`<button data-add="${p.id}" aria-label="Adicionar ao carrinho"><span>Comprar</span></button>`}</div></div></div>`}
+  return `<div class="pcard" style="--c:${c}"><a href="#/produto/${p.id}"><div class="pimg">${foto(p)?`<img loading="lazy" src="${h(foto(p))}" alt="${h(p.nome)}">`:emoji[i%emoji.length]}${p.estoque===0?'<i>Esgotado</i>':''}</div></a><div class="pbody"><a href="#/produto/${p.id}"><h3>${nb(p.nome)}</h3></a><div class="pbuy"><span class="price">${brl(p.preco)}</span>${p.estoque===0?'':`<button data-add="${p.id}" aria-label="Adicionar ao carrinho"><span>Comprar</span></button>`}</div></div></div>`}
 
 function vProduto(id){
   const p=prod(id);if(!p){location.hash='#/';return}
@@ -304,7 +306,7 @@ function vProduto(id){
   ${p.imagens?.length?`<div class="gal">${p.imagens.map(u=>`<img src="${h(u)}" alt="">`).join('')}</div>`:`<div class="box empty"><div class="big">🎁</div></div>`}
   <div class="box"><h1>${h(p.nome)}</h1><div class="price" style="font-size:32px;margin:8px 0">${brl(p.preco)}</div>
   ${p.categoria&&p.categoria.trim()?`<span class="tag" style="background:var(--violet)">${h(p.categoria)}</span>`:''}
-  <p style="white-space:pre-wrap;line-height:1.5;text-align:justify;font-size:17px">${h(p.descricao)}</p></div></div>
+  <p style="white-space:pre-wrap;line-height:1.5;text-align:left;font-size:17px">${h(p.descricao)}</p></div></div>
   <div class="bar"><div class="price">${brl(p.preco)}</div>${p.estoque===0?'<span class="muted grow">Esgotado</span>':`<button class="btn grow" id="add">Colocar no carrinho 🛒</button>`}</div>`;
   const a=$('#add');if(a)a.onclick=()=>addCart(p.id);
   document.querySelectorAll('.gal img').forEach((im,i)=>im.onclick=()=>lightbox(p.imagens,i));
