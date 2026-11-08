@@ -214,6 +214,7 @@ const catKey=c=>String(c||'').trim().replace(/\s+/g,' ').toLowerCase();
 const CAT_ALIAS={'filtros':'Filtros de barro','filtro':'Filtros de barro'};
 const catNorm=c=>{c=String(c||'').trim().replace(/\s+/g,' ');return CAT_ALIAS[c.toLowerCase()]||c};
 const catOf=p=>catNorm(p.categoria)||'Outros';
+let loadErr=false;
 let prods=[],cart=ls.get('loja_cart',[]),sess=ls.get('loja_sess',null),cat='',busca='';
 
 function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),2600)}
@@ -221,8 +222,10 @@ async function api(path,o={}){
   const hd={apikey:KEY,...(o.headers||{})};
   if(sess?.access_token)hd.Authorization='Bearer '+sess.access_token;
   if(o.json!==undefined){hd['Content-Type']='application/json';o.body=JSON.stringify(o.json)}
-  const r=await fetch(SB+path,{method:o.method||'GET',headers:hd,body:o.body});
-  const txt=await r.text();let d=null;try{d=txt?JSON.parse(txt):null}catch(e){d=txt}
+  let r,txt;
+  for(let t=0;t<3;t++){try{r=await fetch(SB+path,{method:o.method||'GET',headers:hd,body:o.body});break}catch(e){if(t===2)throw new Error('Sem conexão. Verifique a internet.');await new Promise(z=>setTimeout(z,700*(t+1)))}}
+  txt=await r.text();let d=null;try{d=txt?JSON.parse(txt):null}catch(e){d=txt}
+  if(r.status===401&&sess&&!path.startsWith('/auth/')&&/JWT|expired/i.test(JSON.stringify(d))){sess=null;ls.set('loja_sess',null);const o2={...o,headers:{...(o.headers||{})}};delete hd.Authorization;return api(path,o2)}
   if(!r.ok)throw new Error((d&&(d.message||d.msg||d.error_description||d.error))||('Erro '+r.status));
   return d;
 }
@@ -260,7 +263,7 @@ function szKey(n){n=String(n||'').trim().replace(/\b(bafeira|bafo|tamanho|com|de
 const ABC=(a,b)=>{const x=szKey(a.nome),y=szKey(b.nome);return x[0].localeCompare(y[0],'pt-BR',{sensitivity:'base',numeric:true})||x[1]-y[1]||String(a.nome).localeCompare(String(b.nome),'pt-BR',{sensitivity:'base',numeric:true})};
 async function load(){
   try{const c=await api('/rest/v1/loja_config?id=eq.1&select=*');if(c&&c[0])cfg=c[0]}catch(e){}
-  try{prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc');prods.sort(ABC)}catch(e){prods=[]}
+  try{prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc');prods.sort(ABC);loadErr=false}catch(e){prods=[];loadErr=true}
   document.title=cfg.nome;setLogo();
   $('#foot').innerHTML=h(cfg.nome)+' · <a href="#/pedido">Acompanhar pedido</a> · <a href="#/admin">Área da loja</a>';
   saveCart();
@@ -279,7 +282,7 @@ function vHome(){
   <svg class="wave" viewBox="0 0 1440 90" preserveAspectRatio="none"><path fill="#fff7fb" d="M0 50 C240 100 480 0 720 40 C960 80 1200 10 1440 50 L1440 90 L0 90Z"/></svg>
   <div class="wrap"><div class="perks"><div class="perk"><span>💬</span>Compra fácil pelo WhatsApp</div><div class="perk"><span>💸</span>Pague com Pix</div><div class="perk"><span>🎁</span>Produtos selecionados</div></div></div>
   <div class="chips"><button class="chip ${!cat?'on':''}" data-c="">✨ Tudo</button>${cats.map(c=>`<button class="chip ${cat===c?'on':''}" data-c="${h(c)}">${h(c)}</button>`).join('')}</div>
-  <div class="wrap"><h2 class="sec">${cat?h(cat):'Nossos produtos'} 🛍️</h2>${lista.length?`<div class="grid">${lista.map((p,i)=>card(p,i)).join('')}</div>`:`<div class="empty"><div class="big">🎈</div><h2>${ativos.length?'Nada encontrado':'Em breve, novidades!'}</h2><p class="muted">${ativos.length?'Tente outra palavra.':'Os produtos estão sendo preparados.'}</p></div>`}</div>`;
+  <div class="wrap"><h2 class="sec">${cat?h(cat):'Nossos produtos'} 🛍️</h2>${lista.length?`<div class="grid">${lista.map((p,i)=>card(p,i)).join('')}</div>`:(loadErr?`<div class="empty"><div class="big">📡</div><h2>Não foi possível carregar</h2><p class="muted">Verifique a internet e tente de novo.</p><button class="btn" onclick="location.reload()">Tentar de novo</button></div>`:`<div class="empty"><div class="big">🎈</div><h2>${ativos.length?'Nada encontrado':'Em breve, novidades!'}</h2><p class="muted">${ativos.length?'Tente outra palavra.':'Os produtos estão sendo preparados.'}</p></div>`)}</div>`;
   $('#qb').onclick=()=>{busca=$('#q').value;vHome()};
   $('#q').onkeydown=e=>{if(e.key==='Enter'){busca=e.target.value;vHome()}};
   document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>addCart(b.dataset.add));
