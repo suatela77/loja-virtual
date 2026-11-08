@@ -348,7 +348,7 @@ const COORD=/(-?\d{1,3}\.\d{3,})\s*[,;]\s*(-?\d{1,3}\.\d{3,})/;
 const fmtCep=c=>c.replace(/(\d{5})(\d{3})/,'$1-$2');
 async function locate(cep,num,txt){
   cep=(cep||'').replace(/\D/g,'');num=(num||'').trim();txt=(txt||'').trim();
-  const mc=txt.match(COORD);if(mc)return{pt:{lat:+mc[1],lon:+mc[2]},end:txt,aprox:false};
+  const mc=txt.match(COORD);if(mc)return{pt:{lat:+mc[1],lon:+mc[2]},end:txt.replace(COORD,'').replace(/\(\s*\)/,'').trim()||'Local escolhido',aprox:false};
   if(cep.length!==8){const m=txt.match(/\b(\d{5})-?(\d{3})\b/);if(m){cep=m[1]+m[2];num=num||txt.replace(m[0],'').replace(/^[\s,\-–]+|[\s,\-–]+$/g,'');txt=''}}
   if(cep.length!==8&&!txt)throw new Error('Digite o CEP (8 números) ou o endereço.');
   let cands=[],end=txt;
@@ -364,6 +364,13 @@ async function locate(cep,num,txt){
   let pt=null,aprox=false;
   for(let i=0;i<cands.length&&!pt;i++){pt=await geo(cands[i]);if(pt&&i>=2)aprox=true;if(!pt)await new Promise(z=>setTimeout(z,1100))}
   return{pt,end,aprox}}
+async function geoMulti(q){
+  const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=br&q='+encodeURIComponent(q),{headers:{'Accept-Language':'pt-BR'}});
+  const d=await r.json();const seen={},out=[];
+  (d||[]).forEach(x=>{const a=x.address||{};const lugar=a.city||a.town||a.village||a.municipality||a.city_district||'';
+    const nome=[a.road||a.pedestrian||a.footway||'',a.suburb||a.neighbourhood||a.quarter||'',lugar,a.state_code||a.state||''].filter(Boolean).join(', ')||String(x.display_name).split(',').slice(0,4).join(',');
+    if(seen[nome])return;seen[nome]=1;out.push({nome,lat:+x.lat,lon:+x.lon,rodovia:!a.road&&!a.pedestrian})});
+  return out}
 async function freteCore(cep,num,txt){
   const o=await locate('','',cfg.frete_origem||'Cabo Frio, RJ');
   if(!o.pt)throw new Error('Não consegui localizar o endereço de saída. Confira na aba Frete.');
@@ -599,6 +606,13 @@ function aFrete(){
     cfg={...cfg,...nv};
     if(mudou)api('/rest/v1/loja_config?id=eq.1',{method:'PATCH',json:nv}).catch(e=>toast('Não consegui salvar os valores: '+e.message));
     try{
+      const cepOk=($('#kcep').value||'').replace(/\D/g,'').length===8,txtK=$('#kend').value.trim();
+      if(!cepOk&&txtK&&!COORD.test(txtK)&&!/\d{5}-?\d{3}/.test(txtK)){
+        const op=await geoMulti(txtK);
+        if(op.length>1){const og=await locate('','',cfg.frete_origem||'Cabo Frio, RJ');
+          $('#kres').innerHTML=`<div class="box" style="background:#f3ecff"><b>Achei mais de um endereço. Toque no correto:</b>${op.map((o,i)=>`<button class="btn small ghost block" style="margin-top:8px;text-align:left" data-op="${i}">📍 ${h(o.nome)}${og.pt?` <span class="muted">(~${Math.round(hav(og.pt,o)*1.3)} km)</span>`:''}</button>`).join('')}</div>`;
+          document.querySelectorAll('[data-op]').forEach(bt=>bt.onclick=()=>{const o=op[+bt.dataset.op];$('#kend').value=`${o.nome} (${o.lat.toFixed(6)}, ${o.lon.toFixed(6)})`;$('#kgo').click()});
+          b.disabled=false;b.textContent='Calcular';return}}
       const r=await freteCore($('#kcep').value,$('#knum').value,$('#kend').value);
       const km=String(r.km).replace('.',',');
       const msg=`Olá! O frete para ${r.end||'o seu endereço'} fica ${brl(r.valor)} (${km} km${cfg.frete_volta?', ida e volta':''}). 🚚`;
