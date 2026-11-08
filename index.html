@@ -348,6 +348,13 @@ async function distKm(a,b){
   return{km:hav(a,b)*1.3,exato:false}}
 const COORD=/(-?\d{1,3}\.\d{3,})\s*[,;]\s*(-?\d{1,3}\.\d{3,})/;
 const fmtCep=c=>c.replace(/(\d{5})(\d{3})/,'$1-$2');
+async function cepCoord(cep){
+  cep=String(cep||'').replace(/\D/g,'');if(cep.length!==8)return null;
+  const k='cepc:'+cep;const c=ls.get(k,null);if(c)return c;
+  let v=null;
+  try{const r=await fetch('https://cep.awesomeapi.com.br/json/'+cep);const d=await r.json();if(d&&d.lat&&d.lng&&!isNaN(+d.lat))v={lat:+d.lat,lon:+d.lng}}catch(e){}
+  if(!v){try{const r=await fetch('https://brasilapi.com.br/api/cep/v2/'+cep);const d=await r.json();const c2=d&&d.location&&d.location.coordinates;if(c2&&c2.latitude&&!isNaN(+c2.latitude))v={lat:+c2.latitude,lon:+c2.longitude}}catch(e){}}
+  if(v)ls.set(k,v);return v}
 async function locate(cep,num,txt){
   cep=(cep||'').replace(/\D/g,'');num=(num||'').trim();txt=(txt||'').trim();
   const mc=txt.match(COORD);if(mc)return{pt:{lat:+mc[1],lon:+mc[2]},end:txt.replace(COORD,'').replace(/\(\s*\)/,'').trim()||'Local escolhido',aprox:false};
@@ -364,7 +371,9 @@ async function locate(cep,num,txt){
   else cands=[txt,txt.replace(/\d{5}-?\d{3}/,'')];
   cands=cands.filter(x=>x&&x.trim());
   let pt=null,aprox=false;
-  for(let i=0;i<cands.length&&!pt;i++){pt=await geo(cands[i]);if(pt&&i>=2)aprox=true;if(!pt)await new Promise(z=>setTimeout(z,1100))}
+  for(let i=0;i<cands.length&&!pt;i++){
+    if(i===2&&cep.length===8){pt=await cepCoord(cep);if(pt)break}
+    pt=await geo(cands[i]);if(pt&&i>=2)aprox=true;if(!pt)await new Promise(z=>setTimeout(z,1100))}
   return{pt,end,aprox}}
 const sem=t=>String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
 function lev(a,b){if(Math.abs(a.length-b.length)>1)return 9;const m=[];for(let i=0;i<=a.length;i++){m[i]=[i]}for(let j=0;j<=b.length;j++)m[0][j]=j;for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)m[i][j]=Math.min(m[i-1][j]+1,m[i][j-1]+1,m[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return m[a.length][b.length]}
@@ -663,13 +672,13 @@ function aFrete(){
           const cu=await cidadeUF()||{cidade:'',uf:''};
           const ogv=await locate('','',cfg.frete_origem||'Cabo Frio, RJ');if(ogv.pt)BIAS=ogv.pt;
           const pintar=(fim)=>{
-            $('#kres').innerHTML=`<div class="box" style="background:#f3ecff"><b>${vl.length>1?'Achei mais de um endereço. Toque no correto:':'Confirme o endereço:'}</b>${fim?'':'<div class="muted">Calculando as distâncias...</div>'}${vl.map((o,i)=>`<button class="btn small ghost block" style="margin-top:8px;text-align:left" data-vl="${i}">📍 ${h(o.rua)} — <b>${h(o.bairro||'sem bairro')}</b> <span class="muted">(CEP ${h(fmtCep(o.cep))}${o.km!=null?' · ~'+String(o.km).replace('.',',')+' km':''})</span></button>`).join('')}<p class="muted">Se souber o número, preencha o campo "Número" antes de tocar.</p></div>`;
+            $('#kres').innerHTML=`<div class="box" style="background:#f3ecff"><b>${vl.length>1?'Achei mais de um endereço. Toque no correto:':'Confirme o endereço:'}</b>${fim?'':'<div class="muted">Calculando as distâncias...</div>'}${vl.map((o,i)=>`<button class="btn small ghost block" style="margin-top:8px;text-align:left" data-vl="${i}">📍 ${h(o.rua)} — <b>${h(o.bairro||'sem bairro')}</b> <span class="muted">(CEP ${h(fmtCep(o.cep))}${o.km!=null?' · ~'+String(o.km).replace('.',',')+' km':(fim?' · distância não encontrada':'')})</span></button>`).join('')}<p class="muted">Se souber o número, preencha o campo "Número" antes de tocar.</p></div>`;
             document.querySelectorAll('[data-vl]').forEach(bt=>bt.onclick=()=>{const o=vl[+bt.dataset.vl];$('#kcep').value=o.cep;$('#kend').value='';$('#kgo').click()})};
           pintar(false);b.disabled=false;b.textContent='Calcular';
           if(ogv.pt){
             for(const o of vl){
               let pt=null;
-              try{pt=await geo(`${o.rua}, ${o.bairro}, ${cu.cidade}, ${cu.uf}`);if(!pt){await new Promise(z=>setTimeout(z,1100));pt=await geo(`${o.bairro}, ${cu.cidade}, ${cu.uf}`)}}catch(e){}
+              try{pt=await geo(`${o.rua}, ${o.bairro}, ${cu.cidade}, ${cu.uf}`);if(!pt)pt=await cepCoord(o.cep);if(!pt){await new Promise(z=>setTimeout(z,1100));pt=await geo(`${o.bairro}, ${cu.cidade}, ${cu.uf}`)}}catch(e){}
               if(pt){o.km=Math.round(hav(ogv.pt,pt)*1.3*10)/10}
               if(!ls.get('geo2:'+`${o.rua}, ${o.bairro}, ${cu.cidade}, ${cu.uf}`.toLowerCase()+(BIAS?'|'+BIAS.lat.toFixed(2)+','+BIAS.lon.toFixed(2):''),null))await new Promise(z=>setTimeout(z,1100));
               pintar(false)}
