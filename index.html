@@ -183,9 +183,10 @@ const FOX=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 130"><polygo
 function setLogo(){$('#logo').innerHTML='<span class="fx"><img src="raposa-pequena.png" alt=""></span>'+h(cfg.nome)}
 const emoji=['🎁','🛍️','✨','🧴','💧','🎀'];
 
+const ABC=(a,b)=>String(a.nome||'').localeCompare(String(b.nome||''),'pt-BR',{sensitivity:'base',numeric:true});
 async function load(){
   try{const c=await api('/rest/v1/loja_config?id=eq.1&select=*');if(c&&c[0])cfg=c[0]}catch(e){}
-  try{prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc')}catch(e){prods=[]}
+  try{prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc');prods.sort(ABC)}catch(e){prods=[]}
   document.title=cfg.nome;setLogo();
   $('#foot').innerHTML=h(cfg.nome)+' · <a href="#/pedido">Acompanhar pedido</a> · <a href="#/admin">Área da loja</a>';
   saveCart();
@@ -329,7 +330,7 @@ async function vAdmin(){
   let ok=false;try{ok=await rpc('loja_virar_admin',{})}catch(e){if(/JWT|expired/i.test(e.message)){sess=null;ls.set('loja_sess',null);return vAdmin()}}
   if(!ok){$('#app').innerHTML=`<div class="wrap empty"><div class="big">🚫</div><h2>Esta conta não é da loja</h2><button class="btn" id="so">Sair</button></div>`;$('#so').onclick=sair;return}
   adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc').catch(()=>[]);
-  prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc').catch(()=>prods);
+  prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc').catch(()=>prods);prods.sort(ABC);
   drawAdmin();
 }
 function sair(){sess=null;ls.set('loja_sess',null);location.hash='#/'}
@@ -390,7 +391,7 @@ function aForm(){
       const row={nome:p.nome.trim(),descricao:p.descricao,preco,categoria:p.categoria.trim(),imagens:p.imagens,estoque:p.estoque,ativo:p.ativo};
       if(p.id)await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'PATCH',json:row});
       else await api('/rest/v1/loja_produtos',{method:'POST',json:row});
-      prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc');adm.edit=null;adm.files=[];toast('Produto salvo! 🎉');aProdutos();
+      prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc');prods.sort(ABC);adm.edit=null;adm.files=[];toast('Produto salvo! 🎉');aProdutos();
     }catch(e){toast(e.message);$('#ps').disabled=false;$('#ps').textContent='Salvar produto'}};
 }
 function aConfig(){
