@@ -558,17 +558,27 @@ function aForm(){
     }catch(e){toast(e.message);$('#ps').disabled=false;$('#ps').textContent='Salvar produto'}};
 }
 function aFrete(){
-  const ok=Number(cfg.frete_km)>0;
-  $('#ad').innerHTML=`<div class="box"><h3>Calculadora de frete 🚚</h3>
-  ${ok?`<p class="muted">Saída: <b>${h(cfg.frete_origem||'Cabo Frio, RJ')}</b> · ${brl(Number(cfg.frete_km))} por km${Number(cfg.frete_min)>0?' · mínimo '+brl(Number(cfg.frete_min)):''}${cfg.frete_volta?' · ida e volta':''}<br>Para mudar, vá em <b>⚙️ Loja</b>.</p>`:`<p class="muted">Antes, defina o <b>valor por km</b> em <b>⚙️ Loja</b> (parte "Frete por distância").</p>`}
+  const num=v=>String(v??'').replace('.',',');
+  $('#ad').innerHTML=`<div class="box"><h3>Valores do frete ⚙️</h3>
+  <label for="kor">Endereço de saída (de onde sai a entrega)</label><textarea class="f" id="kor" rows="3" style="min-height:84px" placeholder="Rua, número, bairro, cidade">${h(cfg.frete_origem||'Cabo Frio, RJ')}</textarea>
+  <label for="kkm">Valor por km (R$)</label><input class="f" id="kkm" inputmode="decimal" value="${num(cfg.frete_km)}" placeholder="Ex.: 2,50">
+  <label for="kmn">Frete mínimo (R$)</label><input class="f" id="kmn" inputmode="decimal" value="${num(cfg.frete_min)}" placeholder="Ex.: 10">
+  <label><input type="checkbox" id="kvt" ${cfg.frete_volta?'checked':''}> Cobrar ida e volta (dobra a distância)</label>
+  <p class="muted">Os valores são salvos sozinhos quando você toca em Calcular.</p></div>
+  <div class="box"><h3>Calculadora de frete 🚚</h3>
   <label for="kcep">CEP do cliente</label><input class="f" id="kcep" inputmode="numeric" maxlength="9" placeholder="00000-000">
   <label for="knum">Número / complemento (opcional)</label><input class="f" id="knum" placeholder="Ex.: 120">
-  <label for="kend">Ou o endereço completo</label><textarea class="f" id="kend" rows="2" placeholder="Rua, número, bairro, cidade"></textarea>
+  <label for="kend">Ou o endereço completo do cliente</label><textarea class="f" id="kend" rows="3" style="min-height:84px" placeholder="Rua, número, bairro, cidade"></textarea>
   <p></p><button class="btn block" id="kgo">Calcular</button><p class="muted" id="kmsg"></p>
   <div id="kres"></div></div>`;
   $('#kgo').onclick=async()=>{
-    if(!ok){toast('Defina o valor por km em Loja');return}
+    const pf=v=>parseFloat(String(v).replace(',','.'))||0;
+    const nv={frete_origem:$('#kor').value.trim()||'Cabo Frio, RJ',frete_km:pf($('#kkm').value),frete_min:pf($('#kmn').value),frete_volta:$('#kvt').checked};
+    if(!(nv.frete_km>0)){toast('Preencha o valor por km');return}
     const b=$('#kgo'),m=$('#kmsg');b.disabled=true;b.textContent='Calculando...';m.textContent='';$('#kres').innerHTML='';
+    const mudou=Object.keys(nv).some(k=>String(cfg[k]??'')!==String(nv[k]));
+    cfg={...cfg,...nv};
+    if(mudou)api('/rest/v1/loja_config?id=eq.1',{method:'PATCH',json:nv}).catch(e=>toast('Não consegui salvar os valores: '+e.message));
     try{
       const r=await freteCore($('#kcep').value,$('#knum').value,$('#kend').value);
       const km=String(r.km).replace('.',',');
@@ -586,16 +596,13 @@ function aConfig(){
   <label for="cav">Aviso no topo (opcional)</label><input class="f" id="cav" value="${h(cfg.aviso)}" placeholder="Ex.: Frete grátis em Cabo Frio!">
   <h3 style="margin-top:18px">Frete por distância 🚚</h3>
   <label><input type="checkbox" id="cfa" ${cfg.frete_ativo?'checked':''}> Mostrar o cálculo de frete para o cliente no carrinho (deixe desligado por enquanto)</label>
-  <label for="cfo">Endereço de saída (onde sai a entrega)</label><input class="f" id="cfo" value="${h(cfg.frete_origem||'Cabo Frio, RJ')}" placeholder="Rua, número, bairro, cidade">
-  <label for="cfk">Valor por km (R$)</label><input class="f" id="cfk" inputmode="decimal" value="${cfg.frete_km??''}" placeholder="Ex.: 2,50">
-  <label for="cfm">Frete mínimo (R$)</label><input class="f" id="cfm" inputmode="decimal" value="${cfg.frete_min??''}" placeholder="Ex.: 10">
-  <label><input type="checkbox" id="cfv" ${cfg.frete_volta?'checked':''}> Cobrar ida e volta (dobra a distância)</label>
+  <p class="muted">O valor por km, o endereço de saída e o mínimo ficam na aba <b>🚚 Frete</b>.</p>
   <h3 style="margin-top:18px">Pix (para o cliente pagar)</h3>
   <label for="cpx">Chave Pix</label><input class="f" id="cpx" value="${h(cfg.pix_chave)}">
   <label for="cpn">Nome do recebedor</label><input class="f" id="cpn" value="${h(cfg.pix_nome)}">
   <label for="cpi">Cidade</label><input class="f" id="cpi" value="${h(cfg.pix_cidade)}">
   <p></p><button class="btn block" id="cs">Salvar</button></div>`;
-  $('#cs').onclick=async()=>{const n={nome:$('#cnm').value,slogan:$('#csl').value,whatsapp:$('#cwa').value,aviso:$('#cav').value,pix_chave:$('#cpx').value.trim(),pix_nome:$('#cpn').value,pix_cidade:$('#cpi').value,frete_ativo:$('#cfa').checked,frete_origem:$('#cfo').value.trim(),frete_km:parseFloat(String($('#cfk').value).replace(',','.'))||0,frete_min:parseFloat(String($('#cfm').value).replace(',','.'))||0,frete_volta:$('#cfv').checked};
+  $('#cs').onclick=async()=>{const n={nome:$('#cnm').value,slogan:$('#csl').value,whatsapp:$('#cwa').value,aviso:$('#cav').value,pix_chave:$('#cpx').value.trim(),pix_nome:$('#cpn').value,pix_cidade:$('#cpi').value,frete_ativo:$('#cfa').checked};
     try{await api('/rest/v1/loja_config?id=eq.1',{method:'PATCH',json:n});cfg={...cfg,...n};document.title=cfg.nome;setLogo();toast('Salvo! ✅')}catch(e){toast(e.message)}};
 }
 
