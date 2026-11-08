@@ -344,33 +344,33 @@ function hav(a,b){const R=6371,t=x=>x*Math.PI/180,dl=t(b.lat-a.lat),dn=t(b.lon-a
 async function distKm(a,b){
   try{const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`);const d=await r.json();if(d&&d.routes&&d.routes[0])return{km:d.routes[0].distance/1000,exato:true}}catch(e){}
   return{km:hav(a,b)*1.3,exato:false}}
+async function freteCore(cep,num,txt){
+  cep=(cep||'').replace(/\D/g,'');num=(num||'').trim();txt=(txt||'').trim();
+  if(cep.length!==8&&!txt)throw new Error('Digite o CEP (8 números) ou o endereço.');
+  let cands=[],end=txt;
+  if(cep.length===8){
+    let v=null;try{const r=await fetch('https://viacep.com.br/ws/'+cep+'/json/');v=await r.json()}catch(e){}
+    if(v&&!v.erro){
+      const rua=v.logradouro||'',bai=v.bairro||'',cid=v.localidade||'',uf=v.uf||'';
+      end=`${rua}${num?', '+num:''}${bai?' - '+bai:''}, ${cid}/${uf}, CEP ${cep.replace(/(\d{5})(\d{3})/,'$1-$2')}`;
+      cands=[`${rua}${num?', '+num:''}, ${bai}, ${cid}, ${uf}`,`${rua}, ${cid}, ${uf}`,`${bai}, ${cid}, ${uf}`,`${cid}, ${uf}`]}
+    else cands=[cep.replace(/(\d{5})(\d{3})/,'$1-$2')+', Brasil']}
+  if(txt&&cep.length!==8)cands=[txt,txt.replace(/\d{5}-?\d{3}/,'')];
+  cands=cands.filter(x=>x&&x.trim());
+  const og=await geo(cfg.frete_origem||'Cabo Frio, RJ');
+  if(!og)throw new Error('Não consegui localizar o endereço de saída da loja. Confira em Loja > Frete.');
+  let dest=null,aprox=false;
+  for(let i=0;i<cands.length&&!dest;i++){dest=await geo(cands[i]);if(dest&&i>=2)aprox=true;if(!dest)await new Promise(z=>setTimeout(z,1100))}
+  if(!dest)throw new Error('Não encontrei esse endereço. Confira o CEP ou escreva rua, número e cidade.');
+  const d=await distKm(og,dest);
+  let km=d.km*(cfg.frete_volta?2:1);km=Math.round(km*10)/10;
+  let valor=Math.max(Number(cfg.frete_min)||0,km*Number(cfg.frete_km));valor=Math.round(valor*100)/100;
+  return{tipo:'entrega',km,valor,end,desc:`Frete (${km.toString().replace('.',',')} km)`,aprox:aprox||!d.exato}}
 async function calcFrete(){
-  const cep=($('#fcep').value||'').replace(/\D/g,''),num=$('#fnum').value.trim(),txt=$('#ce').value.trim();
   const msg=$('#fmsg'),btn=$('#fcalc');
-  if(cep.length!==8&&!txt){msg.textContent='Digite o CEP (8 números) ou o endereço.';return}
   btn.disabled=true;btn.textContent='Calculando...';msg.textContent='';
-  try{
-    let cands=[],end=txt;
-    if(cep.length===8){
-      let v=null;try{const r=await fetch('https://viacep.com.br/ws/'+cep+'/json/');v=await r.json()}catch(e){}
-      if(v&&!v.erro){
-        const rua=v.logradouro||'',bai=v.bairro||'',cid=v.localidade||'',uf=v.uf||'';
-        end=`${rua}${num?', '+num:''}${bai?' - '+bai:''}, ${cid}/${uf}, CEP ${cep.replace(/(\d{5})(\d{3})/,'$1-$2')}`;
-        $('#ce').value=end;
-        cands=[`${rua}${num?', '+num:''}, ${bai}, ${cid}, ${uf}`,`${rua}, ${cid}, ${uf}`,`${bai}, ${cid}, ${uf}`,`${cid}, ${uf}`]}
-      else cands=[cep.replace(/(\d{5})(\d{3})/,'$1-$2')+', Brasil']}
-    if(txt&&cep.length!==8)cands=[txt,txt.replace(/\d{5}-?\d{3}/,'')];
-    cands=cands.filter(x=>x&&x.trim());
-    const og=await geo(cfg.frete_origem||'Cabo Frio, RJ');
-    if(!og)throw new Error('Não consegui localizar o endereço da loja. Avise a loja.');
-    let dest=null,aprox=false;
-    for(let i=0;i<cands.length&&!dest;i++){dest=await geo(cands[i]);if(dest&&i>=2)aprox=true;if(!dest)await new Promise(z=>setTimeout(z,1100))}
-    if(!dest)throw new Error('Não encontrei esse endereço. Confira o CEP ou escreva rua, número e cidade.');
-    const d=await distKm(og,dest);
-    let km=d.km*(cfg.frete_volta?2:1);km=Math.round(km*10)/10;
-    let valor=Math.max(Number(cfg.frete_min)||0,km*Number(cfg.frete_km));valor=Math.round(valor*100)/100;
-    fr={tipo:'entrega',km,valor,desc:`Frete (${km.toString().replace('.',',')} km)`,aprox:aprox||!d.exato};
-  }catch(e){fr=null;msg.textContent=e.message||'Erro ao calcular. Tente de novo.'}
+  try{fr=await freteCore($('#fcep').value,$('#fnum').value,$('#ce').value);if(fr.end&&!$('#ce').value.trim())$('#ce').value=fr.end;else if(fr.end&&($('#fcep').value||'').replace(/\D/g,'').length===8)$('#ce').value=fr.end}
+  catch(e){fr=null;msg.textContent=e.message||'Erro ao calcular. Tente de novo.'}
   btn.disabled=false;btn.textContent='Calcular frete';freteUI()}
 function freteUI(){
   const el=$('#fres');if(!el)return;
@@ -414,7 +414,7 @@ async function finalizar(){
   const b=$('#fin');b.disabled=true;b.textContent='Enviando...';
   ls.set('loja_cli',{nome,tel,end:$('#ce').value});
   try{
-    const r=await rpc('loja_criar_pedido',{p_nome:nome,p_tel:tel,p_email:'',p_end:$('#ce').value,p_obs:$('#co').value,p_itens:cart,p_frete:freteVal(),p_frete_desc:fr?fr.desc:''});
+    const r=await rpc('loja_criar_pedido',{p_nome:nome,p_tel:tel,p_email:'',p_end:$('#ce').value,p_obs:$('#co').value,p_itens:cart,...(fr&&fr.valor>0?{p_frete:fr.valor,p_frete_desc:fr.desc}:{})});
     const linhas=cart.map(i=>{const p=prod(i.id);return `• ${i.qtd}x ${p.nome} — ${brl(p.preco*i.qtd)}`}).join('\n');
     const txt=`Olá! Fiz um pedido na ${cfg.nome} 🛍️\n\nPedido: ${r.codigo}\n${linhas}${fr?'\n• '+(fr.tipo==='retirada'?'Retirada na loja — sem frete':fr.desc+' — '+brl(fr.valor)):''}\n\nTotal: ${brl(r.total)}\nNome: ${nome}${$('#ce').value?'\nEndereço: '+$('#ce').value:''}${$('#co').value?'\nObs: '+$('#co').value:''}\n\nAcompanhar: ${location.origin}/#/pedido/${r.codigo}`;
     cart=[];fr=null;saveCart();
@@ -494,12 +494,13 @@ function drawAdmin(){
   $('#app').innerHTML=`<div class="wrap"><div class="tabs">
   <button class="chip ${adm.tab==='pedidos'?'on':''}" data-t="pedidos">📦 Pedidos${pend?` (${pend})`:''}</button>
   <button class="chip ${adm.tab==='produtos'?'on':''}" data-t="produtos">🛍️ Produtos</button>
+  <button class="chip ${adm.tab==='frete'?'on':''}" data-t="frete">🚚 Frete</button>
   <button class="chip ${adm.tab==='config'?'on':''}" data-t="config">⚙️ Loja</button>
   <button class="chip" id="so">Sair</button></div>
   <div class="stats"><div class="stat"><b>${pend}</b>pedidos novos</div><div class="stat"><b>${adm.pedidos.length}</b>pedidos</div><div class="stat"><b>${prods.length}</b>produtos</div></div><div id="ad"></div></div>`;
   document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{adm.tab=b.dataset.t;adm.edit=null;drawAdmin()});
   $('#so').onclick=sair;
-  ({pedidos:aPedidos,produtos:aProdutos,config:aConfig})[adm.tab]();
+  ({pedidos:aPedidos,produtos:aProdutos,frete:aFrete,config:aConfig})[adm.tab]();
 }
 function aPedidos(){
   $('#ad').innerHTML=adm.pedidos.length?adm.pedidos.map(p=>{const st=STATUS[p.status]||[p.status,'#999'];return `<div class="box"><div class="row"><b class="grow">${h(p.codigo)} · ${h(p.cliente_nome)}</b><span class="tag" style="background:${st[1]}">${st[0]}</span></div>
@@ -556,6 +557,27 @@ function aForm(){
       prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc');prods.sort(ABC);adm.edit=null;adm.files=[];toast('Produto salvo! 🎉');aProdutos();
     }catch(e){toast(e.message);$('#ps').disabled=false;$('#ps').textContent='Salvar produto'}};
 }
+function aFrete(){
+  const ok=Number(cfg.frete_km)>0;
+  $('#ad').innerHTML=`<div class="box"><h3>Calculadora de frete 🚚</h3>
+  ${ok?`<p class="muted">Saída: <b>${h(cfg.frete_origem||'Cabo Frio, RJ')}</b> · ${brl(Number(cfg.frete_km))} por km${Number(cfg.frete_min)>0?' · mínimo '+brl(Number(cfg.frete_min)):''}${cfg.frete_volta?' · ida e volta':''}<br>Para mudar, vá em <b>⚙️ Loja</b>.</p>`:`<p class="muted">Antes, defina o <b>valor por km</b> em <b>⚙️ Loja</b> (parte "Frete por distância").</p>`}
+  <label for="kcep">CEP do cliente</label><input class="f" id="kcep" inputmode="numeric" maxlength="9" placeholder="00000-000">
+  <label for="knum">Número / complemento (opcional)</label><input class="f" id="knum" placeholder="Ex.: 120">
+  <label for="kend">Ou o endereço completo</label><textarea class="f" id="kend" rows="2" placeholder="Rua, número, bairro, cidade"></textarea>
+  <p></p><button class="btn block" id="kgo">Calcular</button><p class="muted" id="kmsg"></p>
+  <div id="kres"></div></div>`;
+  $('#kgo').onclick=async()=>{
+    if(!ok){toast('Defina o valor por km em Loja');return}
+    const b=$('#kgo'),m=$('#kmsg');b.disabled=true;b.textContent='Calculando...';m.textContent='';$('#kres').innerHTML='';
+    try{
+      const r=await freteCore($('#kcep').value,$('#knum').value,$('#kend').value);
+      const km=String(r.km).replace('.',',');
+      const msg=`Olá! O frete para ${r.end||'o seu endereço'} fica ${brl(r.valor)} (${km} km${cfg.frete_volta?', ida e volta':''}). 🚚`;
+      $('#kres').innerHTML=`<div class="box" style="background:#f3ecff"><div>📍 ${h(r.end||'')}</div><div style="margin:6px 0">Distância: <b>${km} km</b>${cfg.frete_volta?' (ida e volta)':''}</div><div class="price" style="font-size:32px">${brl(r.valor)}</div>${r.aprox?'<p class="muted">Valor aproximado: o endereço foi localizado pela região. Confira antes de passar ao cliente.</p>':''}<p></p><button class="btn small violet" id="kcp">Copiar mensagem</button> <a class="btn small green" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank">Enviar no WhatsApp</a></div>`;
+      $('#kcp').onclick=async()=>{try{await navigator.clipboard.writeText(msg);toast('Mensagem copiada ✅')}catch(e){toast('Não consegui copiar')}};
+    }catch(e){m.textContent=e.message||'Erro ao calcular.'}
+    b.disabled=false;b.textContent='Calcular'};
+}
 function aConfig(){
   $('#ad').innerHTML=`<div class="box"><h3>Dados da loja</h3>
   <label for="cnm">Nome da loja</label><input class="f" id="cnm" value="${h(cfg.nome)}">
@@ -563,7 +585,7 @@ function aConfig(){
   <label for="cwa">WhatsApp da loja (com DDD)</label><input class="f" id="cwa" type="tel" value="${h(cfg.whatsapp)}" placeholder="22999999999">
   <label for="cav">Aviso no topo (opcional)</label><input class="f" id="cav" value="${h(cfg.aviso)}" placeholder="Ex.: Frete grátis em Cabo Frio!">
   <h3 style="margin-top:18px">Frete por distância 🚚</h3>
-  <label><input type="checkbox" id="cfa" ${cfg.frete_ativo?'checked':''}> Calcular frete automático (por km)</label>
+  <label><input type="checkbox" id="cfa" ${cfg.frete_ativo?'checked':''}> Mostrar o cálculo de frete para o cliente no carrinho (deixe desligado por enquanto)</label>
   <label for="cfo">Endereço de saída (onde sai a entrega)</label><input class="f" id="cfo" value="${h(cfg.frete_origem||'Cabo Frio, RJ')}" placeholder="Rua, número, bairro, cidade">
   <label for="cfk">Valor por km (R$)</label><input class="f" id="cfk" inputmode="decimal" value="${cfg.frete_km??''}" placeholder="Ex.: 2,50">
   <label for="cfm">Frete mínimo (R$)</label><input class="f" id="cfm" inputmode="decimal" value="${cfg.frete_min??''}" placeholder="Ex.: 10">
