@@ -330,13 +330,70 @@ function lightbox(imgs,i){
   let x0=null;d.ontouchstart=e=>{x0=e.touches.length===1?e.touches[0].clientX:null};
   d.ontouchend=e=>{if(x0===null||imgs.length<2)return;const dx=e.changedTouches[0].clientX-x0;if(Math.abs(dx)>60){i=(i+(dx<0?1:-1)+imgs.length)%imgs.length;draw()}x0=null};
   draw();document.body.appendChild(d)}
+
+/* ---------- frete por distancia ---------- */
+let fr=null; // {tipo:'entrega'|'retirada',km,valor,desc}
+const freteOn=()=>!!cfg.frete_ativo&&Number(cfg.frete_km)>0;
+const freteVal=()=>fr?Number(fr.valor)||0:0;
+async function geo(q){
+  const k='geo:'+q.toLowerCase();const c=ls.get(k,null);if(c)return c;
+  const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q='+encodeURIComponent(q),{headers:{'Accept-Language':'pt-BR'}});
+  const d=await r.json();if(!d||!d[0])return null;
+  const v={lat:+d[0].lat,lon:+d[0].lon};ls.set(k,v);return v}
+function hav(a,b){const R=6371,t=x=>x*Math.PI/180,dl=t(b.lat-a.lat),dn=t(b.lon-a.lon);const x=Math.sin(dl/2)**2+Math.cos(t(a.lat))*Math.cos(t(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
+async function distKm(a,b){
+  try{const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`);const d=await r.json();if(d&&d.routes&&d.routes[0])return{km:d.routes[0].distance/1000,exato:true}}catch(e){}
+  return{km:hav(a,b)*1.3,exato:false}}
+async function calcFrete(){
+  const cep=($('#fcep').value||'').replace(/\D/g,''),num=$('#fnum').value.trim(),txt=$('#ce').value.trim();
+  const msg=$('#fmsg'),btn=$('#fcalc');
+  if(cep.length!==8&&!txt){msg.textContent='Digite o CEP (8 números) ou o endereço.';return}
+  btn.disabled=true;btn.textContent='Calculando...';msg.textContent='';
+  try{
+    let cands=[],end=txt;
+    if(cep.length===8){
+      let v=null;try{const r=await fetch('https://viacep.com.br/ws/'+cep+'/json/');v=await r.json()}catch(e){}
+      if(v&&!v.erro){
+        const rua=v.logradouro||'',bai=v.bairro||'',cid=v.localidade||'',uf=v.uf||'';
+        end=`${rua}${num?', '+num:''}${bai?' - '+bai:''}, ${cid}/${uf}, CEP ${cep.replace(/(\d{5})(\d{3})/,'$1-$2')}`;
+        $('#ce').value=end;
+        cands=[`${rua}${num?', '+num:''}, ${bai}, ${cid}, ${uf}`,`${rua}, ${cid}, ${uf}`,`${bai}, ${cid}, ${uf}`,`${cid}, ${uf}`]}
+      else cands=[cep.replace(/(\d{5})(\d{3})/,'$1-$2')+', Brasil']}
+    if(txt&&cep.length!==8)cands=[txt,txt.replace(/\d{5}-?\d{3}/,'')];
+    cands=cands.filter(x=>x&&x.trim());
+    const og=await geo(cfg.frete_origem||'Cabo Frio, RJ');
+    if(!og)throw new Error('Não consegui localizar o endereço da loja. Avise a loja.');
+    let dest=null,aprox=false;
+    for(let i=0;i<cands.length&&!dest;i++){dest=await geo(cands[i]);if(dest&&i>=2)aprox=true;if(!dest)await new Promise(z=>setTimeout(z,1100))}
+    if(!dest)throw new Error('Não encontrei esse endereço. Confira o CEP ou escreva rua, número e cidade.');
+    const d=await distKm(og,dest);
+    let km=d.km*(cfg.frete_volta?2:1);km=Math.round(km*10)/10;
+    let valor=Math.max(Number(cfg.frete_min)||0,km*Number(cfg.frete_km));valor=Math.round(valor*100)/100;
+    fr={tipo:'entrega',km,valor,desc:`Frete (${km.toString().replace('.',',')} km)`,aprox:aprox||!d.exato};
+  }catch(e){fr=null;msg.textContent=e.message||'Erro ao calcular. Tente de novo.'}
+  btn.disabled=false;btn.textContent='Calcular frete';freteUI()}
+function freteUI(){
+  const el=$('#fres');if(!el)return;
+  if(fr&&fr.tipo==='retirada')el.innerHTML='🏬 <b>Retirada na loja</b> — sem frete.';
+  else if(fr)el.innerHTML=`🚚 Distância: <b>${String(fr.km).replace('.',',')} km</b>${cfg.frete_volta?' (ida e volta)':''}<br>Frete: <b>${brl(fr.valor)}</b>${fr.aprox?'<br><span class="muted">Valor aproximado (endereço localizado pela região).</span>':''}`;
+  else el.innerHTML='';
+  const t=$('#tt');if(t)t.textContent=brl(cartTotal()+freteVal());
+  const l=$('#tfr');if(l)l.innerHTML=fr?`<div class="row"><span class="grow">${fr.tipo==='retirada'?'Retirada':'Frete'}</span><b>${fr.tipo==='retirada'?'Grátis':brl(fr.valor)}</b></div>`:''}
 function vCarrinho(){
   cart=cart.filter(i=>prod(i.id));saveCart();
   if(!cart.length){$('#app').innerHTML=`<div class="wrap empty"><div class="big">🛒</div><h2>Seu carrinho está vazio</h2><p class="muted">Escolha algo lindo na vitrine!</p><a class="btn" href="#/">Ver produtos</a></div>`;return}
   const me=ls.get('loja_cli',{});
   $('#app').innerHTML=`<div class="wrap"><h2 style="margin:16px 0">Seu carrinho 🛒</h2>
   <div class="box">${cart.map(i=>{const p=prod(i.id);return `<div class="row" style="margin:10px 0"><div class="th">${foto(p)?`<img src="${h(foto(p))}" alt="">`:'🎁'}</div><div class="grow"><b>${h(p.nome)}</b><div class="price" style="font-size:18px">${brl(p.preco*i.qtd)}</div></div><div class="qty"><button data-m="${p.id}">−</button><b>${i.qtd}</b><button data-p="${p.id}">+</button></div></div>`}).join('')}
-  <hr style="border:0;border-top:2px dashed #eadcff"><div class="row"><b class="grow">Total</b><span class="price" style="font-size:28px">${brl(cartTotal())}</span></div></div>
+  <hr style="border:0;border-top:2px dashed #eadcff"><div id="tfr"></div><div class="row"><b class="grow">Total</b><span class="price" style="font-size:28px" id="tt">${brl(cartTotal()+freteVal())}</span></div></div>
+  ${freteOn()?`<div class="box"><h3>Entrega 🚚</h3>
+  <label><input type="radio" name="ftipo" value="entrega" ${!fr||fr.tipo!=='retirada'?'checked':''}> Entregar no meu endereço</label>
+  <label><input type="radio" name="ftipo" value="retirada" ${fr&&fr.tipo==='retirada'?'checked':''}> Retirar na loja (sem frete)</label>
+  <div id="fbox" style="${fr&&fr.tipo==='retirada'?'display:none':''}">
+  <label for="fcep">CEP</label><input class="f" id="fcep" inputmode="numeric" maxlength="9" placeholder="00000-000" autocomplete="postal-code">
+  <label for="fnum">Número / complemento</label><input class="f" id="fnum" placeholder="Ex.: 120, apto 3">
+  <p></p><button class="btn violet block" id="fcalc">Calcular frete</button><p class="muted" id="fmsg"></p></div>
+  <div id="fres" style="margin-top:8px"></div></div>`:''}
   <div class="box"><h3>Seus dados</h3>
   <label for="cn">Seu nome</label><input class="f" id="cn" value="${h(me.nome||'')}" autocomplete="name">
   <label for="ct">Seu WhatsApp</label><input class="f" id="ct" type="tel" value="${h(me.tel||'')}" autocomplete="tel" placeholder="(22) 99999-9999">
@@ -347,18 +404,20 @@ function vCarrinho(){
   document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const i=cart.find(x=>x.id===b.dataset.m);i.qtd--;if(i.qtd<1)cart=cart.filter(x=>x!==i);saveCart();vCarrinho()});
   document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{cart.find(x=>x.id===b.dataset.p).qtd++;saveCart();vCarrinho()});
   $('#fin').onclick=finalizar;
+  if(freteOn()){document.querySelectorAll('[name=ftipo]').forEach(r=>r.onchange=()=>{if(r.checked&&r.value==='retirada'){fr={tipo:'retirada',km:0,valor:0,desc:'Retirada na loja'};$('#fbox').style.display='none'}else if(r.checked){fr=null;$('#fbox').style.display=''}freteUI()});$('#fcalc').onclick=calcFrete;freteUI()}
 }
 async function finalizar(){
   const nome=$('#cn').value.trim(),tel=$('#ct').value.trim();
   if(!nome||!tel){toast('Preencha nome e WhatsApp');return}
   if(!cfg.whatsapp){toast('A loja ainda não configurou o WhatsApp');return}
+  if(freteOn()&&!fr){toast('Calcule o frete ou escolha retirar na loja');return}
   const b=$('#fin');b.disabled=true;b.textContent='Enviando...';
   ls.set('loja_cli',{nome,tel,end:$('#ce').value});
   try{
-    const r=await rpc('loja_criar_pedido',{p_nome:nome,p_tel:tel,p_email:'',p_end:$('#ce').value,p_obs:$('#co').value,p_itens:cart});
+    const r=await rpc('loja_criar_pedido',{p_nome:nome,p_tel:tel,p_email:'',p_end:$('#ce').value,p_obs:$('#co').value,p_itens:cart,p_frete:freteVal(),p_frete_desc:fr?fr.desc:''});
     const linhas=cart.map(i=>{const p=prod(i.id);return `• ${i.qtd}x ${p.nome} — ${brl(p.preco*i.qtd)}`}).join('\n');
-    const txt=`Olá! Fiz um pedido na ${cfg.nome} 🛍️\n\nPedido: ${r.codigo}\n${linhas}\n\nTotal: ${brl(r.total)}\nNome: ${nome}${$('#ce').value?'\nEndereço: '+$('#ce').value:''}${$('#co').value?'\nObs: '+$('#co').value:''}\n\nAcompanhar: ${location.origin}/#/pedido/${r.codigo}`;
-    cart=[];saveCart();
+    const txt=`Olá! Fiz um pedido na ${cfg.nome} 🛍️\n\nPedido: ${r.codigo}\n${linhas}${fr?'\n• '+(fr.tipo==='retirada'?'Retirada na loja — sem frete':fr.desc+' — '+brl(fr.valor)):''}\n\nTotal: ${brl(r.total)}\nNome: ${nome}${$('#ce').value?'\nEndereço: '+$('#ce').value:''}${$('#co').value?'\nObs: '+$('#co').value:''}\n\nAcompanhar: ${location.origin}/#/pedido/${r.codigo}`;
+    cart=[];fr=null;saveCart();
     ls.set('loja_ult',r.codigo);
     location.hash='#/pedido/'+r.codigo;
     setTimeout(()=>{location.href=waLink(txt)},400);
@@ -503,12 +562,18 @@ function aConfig(){
   <label for="csl">Frase de destaque</label><input class="f" id="csl" value="${h(cfg.slogan)}">
   <label for="cwa">WhatsApp da loja (com DDD)</label><input class="f" id="cwa" type="tel" value="${h(cfg.whatsapp)}" placeholder="22999999999">
   <label for="cav">Aviso no topo (opcional)</label><input class="f" id="cav" value="${h(cfg.aviso)}" placeholder="Ex.: Frete grátis em Cabo Frio!">
+  <h3 style="margin-top:18px">Frete por distância 🚚</h3>
+  <label><input type="checkbox" id="cfa" ${cfg.frete_ativo?'checked':''}> Calcular frete automático (por km)</label>
+  <label for="cfo">Endereço de saída (onde sai a entrega)</label><input class="f" id="cfo" value="${h(cfg.frete_origem||'Cabo Frio, RJ')}" placeholder="Rua, número, bairro, cidade">
+  <label for="cfk">Valor por km (R$)</label><input class="f" id="cfk" inputmode="decimal" value="${cfg.frete_km??''}" placeholder="Ex.: 2,50">
+  <label for="cfm">Frete mínimo (R$)</label><input class="f" id="cfm" inputmode="decimal" value="${cfg.frete_min??''}" placeholder="Ex.: 10">
+  <label><input type="checkbox" id="cfv" ${cfg.frete_volta?'checked':''}> Cobrar ida e volta (dobra a distância)</label>
   <h3 style="margin-top:18px">Pix (para o cliente pagar)</h3>
   <label for="cpx">Chave Pix</label><input class="f" id="cpx" value="${h(cfg.pix_chave)}">
   <label for="cpn">Nome do recebedor</label><input class="f" id="cpn" value="${h(cfg.pix_nome)}">
   <label for="cpi">Cidade</label><input class="f" id="cpi" value="${h(cfg.pix_cidade)}">
   <p></p><button class="btn block" id="cs">Salvar</button></div>`;
-  $('#cs').onclick=async()=>{const n={nome:$('#cnm').value,slogan:$('#csl').value,whatsapp:$('#cwa').value,aviso:$('#cav').value,pix_chave:$('#cpx').value.trim(),pix_nome:$('#cpn').value,pix_cidade:$('#cpi').value};
+  $('#cs').onclick=async()=>{const n={nome:$('#cnm').value,slogan:$('#csl').value,whatsapp:$('#cwa').value,aviso:$('#cav').value,pix_chave:$('#cpx').value.trim(),pix_nome:$('#cpn').value,pix_cidade:$('#cpi').value,frete_ativo:$('#cfa').checked,frete_origem:$('#cfo').value.trim(),frete_km:parseFloat(String($('#cfk').value).replace(',','.'))||0,frete_min:parseFloat(String($('#cfm').value).replace(',','.'))||0,frete_volta:$('#cfv').checked};
     try{await api('/rest/v1/loja_config?id=eq.1',{method:'PATCH',json:n});cfg={...cfg,...n};document.title=cfg.nome;setLogo();toast('Salvo! ✅')}catch(e){toast(e.message)}};
 }
 
