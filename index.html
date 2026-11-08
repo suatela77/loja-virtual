@@ -366,8 +366,9 @@ function aPedidos(){
 }
 function aProdutos(){
   if(adm.edit){return aForm()}
-  $('#ad').innerHTML=`<button class="btn block" id="np">+ Novo produto</button>`+prods.map((p,i)=>`<div class="box row"><div class="th">${foto(p)?`<img src="${h(foto(p))}" alt="">`:'🎁'}</div><div class="grow"><b>${h(p.nome)}</b><div class="muted">${brl(p.preco)} ${p.ativo?'':'· 🙈 oculto'}</div></div><button class="btn small ghost" data-e="${p.id}">Editar</button></div>`).join('');
+  $('#ad').innerHTML=`<button class="btn block" id="np">+ Novo produto</button>`+prods.map((p,i)=>`<div class="box row"><div class="th">${foto(p)?`<img src="${h(foto(p))}" alt="">`:'🎁'}</div><div class="grow"><b>${h(p.nome)}</b><div class="muted">${brl(p.preco)} ${p.ativo?'':'· 🙈 oculto'}</div></div><button class="btn small ghost" data-e="${p.id}">Editar</button><button class="btn small" style="background:#e53935;margin-left:6px" data-dp="${p.id}" aria-label="Excluir">🗑️</button></div>`).join('');
   $('#np').onclick=()=>{adm.edit={nome:'',descricao:'',preco:'',categoria:'',imagens:[],estoque:null,ativo:true};adm.files=[];aProdutos()};
+  document.querySelectorAll('[data-dp]').forEach(b=>b.onclick=async()=>{const p=prod(b.dataset.dp);if(!p||!confirm('Excluir o produto "'+p.nome+'"? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'DELETE'});prods=prods.filter(x=>x.id!==p.id);toast('Produto excluído');aProdutos()}catch(e){toast(e.message)}});
   document.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{adm.edit=JSON.parse(JSON.stringify(prod(b.dataset.e)));adm.files=[];aProdutos()});
 }
 function aForm(){
