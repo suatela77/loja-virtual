@@ -335,9 +335,11 @@ function lightbox(imgs,i){
 let fr=null; // {tipo:'entrega'|'retirada',km,valor,desc}
 const freteOn=()=>!!cfg.frete_ativo&&Number(cfg.frete_km)>0;
 const freteVal=()=>fr?Number(fr.valor)||0:0;
+let BIAS=null;
+const vbox=(p,d)=>`${(p.lon-d).toFixed(4)},${(p.lat+d).toFixed(4)},${(p.lon+d).toFixed(4)},${(p.lat-d).toFixed(4)}`;
 async function geo(q){
-  const k='geo:'+q.toLowerCase();const c=ls.get(k,null);if(c)return c;
-  const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q='+encodeURIComponent(q),{headers:{'Accept-Language':'pt-BR'}});
+  const k='geo2:'+q.toLowerCase()+(BIAS?'|'+BIAS.lat.toFixed(2)+','+BIAS.lon.toFixed(2):'');const c=ls.get(k,null);if(c)return c;
+  const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br'+(BIAS?'&viewbox='+vbox(BIAS,0.5):'')+'&q='+encodeURIComponent(q),{headers:{'Accept-Language':'pt-BR'}});
   const d=await r.json();if(!d||!d[0])return null;
   const v={lat:+d[0].lat,lon:+d[0].lon};ls.set(k,v);return v}
 function hav(a,b){const R=6371,t=x=>x*Math.PI/180,dl=t(b.lat-a.lat),dn=t(b.lon-a.lon);const x=Math.sin(dl/2)**2+Math.cos(t(a.lat))*Math.cos(t(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
@@ -364,22 +366,26 @@ async function locate(cep,num,txt){
   let pt=null,aprox=false;
   for(let i=0;i<cands.length&&!pt;i++){pt=await geo(cands[i]);if(pt&&i>=2)aprox=true;if(!pt)await new Promise(z=>setTimeout(z,1100))}
   return{pt,end,aprox}}
-async function geoMulti(q){
-  const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=br&q='+encodeURIComponent(q),{headers:{'Accept-Language':'pt-BR'}});
-  const d=await r.json();const seen={},out=[];
+async function geoMulti(q,og){
+  const get=async bound=>{const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=20&countrycodes=br'+(og?'&viewbox='+vbox(og,0.6)+(bound?'&bounded=1':''):'')+'&q='+encodeURIComponent(q),{headers:{'Accept-Language':'pt-BR'}});return r.json()};
+  let d=await get(true);
+  if(!d||!d.length){await new Promise(z=>setTimeout(z,1100));d=await get(false)}
+  const seen={},out=[];
   (d||[]).forEach(x=>{const a=x.address||{};const lugar=a.city||a.town||a.village||a.municipality||a.city_district||'';
     const nome=[a.road||a.pedestrian||a.footway||'',a.suburb||a.neighbourhood||a.quarter||'',lugar,a.state_code||a.state||''].filter(Boolean).join(', ')||String(x.display_name).split(',').slice(0,4).join(',');
-    if(seen[nome])return;seen[nome]=1;out.push({nome,lat:+x.lat,lon:+x.lon,rodovia:!a.road&&!a.pedestrian})});
-  return out}
+    if(seen[nome])return;seen[nome]=1;const o={nome,lat:+x.lat,lon:+x.lon};o.d=og?hav(og,o):0;out.push(o)});
+  out.sort((a,b)=>a.d-b.d);
+  return out.slice(0,8)}
 async function freteCore(cep,num,txt){
   const o=await locate('','',cfg.frete_origem||'Cabo Frio, RJ');
   if(!o.pt)throw new Error('Não consegui localizar o endereço de saída. Confira na aba Frete.');
+  BIAS=o.pt;
   const d0=await locate(cep,num,txt);
   if(!d0.pt)throw new Error('Não encontrei esse endereço. Confira o CEP ou escreva rua, número e cidade.');
   const d=await distKm(o.pt,d0.pt);
   let km=d.km*(cfg.frete_volta?2:1);km=Math.round(km*10)/10;
   let valor=Math.max(Number(cfg.frete_min)||0,km*Number(cfg.frete_km));valor=Math.round(valor*100)/100;
-  return{tipo:'entrega',km,valor,end:d0.end,desc:`Frete (${km.toString().replace('.',',')} km)`,aprox:d0.aprox||o.aprox||!d.exato}}
+  return{tipo:'entrega',km,valor,end:d0.end,pt:d0.pt,desc:`Frete (${km.toString().replace('.',',')} km)`,aprox:d0.aprox||o.aprox||!d.exato}}
 async function calcFrete(){
   const msg=$('#fmsg'),btn=$('#fcalc');
   btn.disabled=true;btn.textContent='Calculando...';msg.textContent='';
@@ -608,15 +614,16 @@ function aFrete(){
     try{
       const cepOk=($('#kcep').value||'').replace(/\D/g,'').length===8,txtK=$('#kend').value.trim();
       if(!cepOk&&txtK&&!COORD.test(txtK)&&!/\d{5}-?\d{3}/.test(txtK)){
-        const op=await geoMulti(txtK);
-        if(op.length>1){const og=await locate('','',cfg.frete_origem||'Cabo Frio, RJ');
+        const og=await locate('','',cfg.frete_origem||'Cabo Frio, RJ');if(og.pt)BIAS=og.pt;
+        const op=await geoMulti(txtK,og.pt);
+        if(op.length>1){
           $('#kres').innerHTML=`<div class="box" style="background:#f3ecff"><b>Achei mais de um endereço. Toque no correto:</b>${op.map((o,i)=>`<button class="btn small ghost block" style="margin-top:8px;text-align:left" data-op="${i}">📍 ${h(o.nome)}${og.pt?` <span class="muted">(~${Math.round(hav(og.pt,o)*1.3)} km)</span>`:''}</button>`).join('')}</div>`;
           document.querySelectorAll('[data-op]').forEach(bt=>bt.onclick=()=>{const o=op[+bt.dataset.op];$('#kend').value=`${o.nome} (${o.lat.toFixed(6)}, ${o.lon.toFixed(6)})`;$('#kgo').click()});
           b.disabled=false;b.textContent='Calcular';return}}
       const r=await freteCore($('#kcep').value,$('#knum').value,$('#kend').value);
       const km=String(r.km).replace('.',',');
       const msg=`Olá! O frete para ${r.end||'o seu endereço'} fica ${brl(r.valor)} (${km} km${cfg.frete_volta?', ida e volta':''}). 🚚`;
-      $('#kres').innerHTML=`<div class="box" style="background:#f3ecff"><div>📍 ${h(r.end||'')}</div><div style="margin:6px 0">Distância: <b>${km} km</b>${cfg.frete_volta?' (ida e volta)':''}</div><div class="price" style="font-size:32px">${brl(r.valor)}</div>${r.aprox?'<p class="muted">Valor aproximado: o endereço foi localizado pela região. Confira antes de passar ao cliente.</p>':''}<p></p><button class="btn small violet" id="kcp">Copiar mensagem</button> <a class="btn small green" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank">Enviar no WhatsApp</a></div>`;
+      $('#kres').innerHTML=`<div class="box" style="background:#f3ecff"><div>📍 ${h(r.end||'')}</div><div style="margin:6px 0">Distância: <b>${km} km</b>${cfg.frete_volta?' (ida e volta)':''}</div><div class="price" style="font-size:32px">${brl(r.valor)}</div>${r.aprox?'<p class="muted">Valor aproximado: o endereço foi localizado pela região. Confira antes de passar ao cliente.</p>':''}<p></p><button class="btn small violet" id="kcp">Copiar mensagem</button> <a class="btn small green" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank">Enviar no WhatsApp</a> <a class="btn small" style="background:#33ccff;color:#06324a" href="https://waze.com/ul?ll=${r.pt.lat},${r.pt.lon}&navigate=yes" target="_blank">🚗 Abrir no Waze</a></div>`;
       $('#kcp').onclick=async()=>{try{await navigator.clipboard.writeText(msg);toast('Mensagem copiada ✅')}catch(e){toast('Não consegui copiar')}};
     }catch(e){m.textContent=e.message||'Erro ao calcular.'}
     b.disabled=false;b.textContent='Calcular'};
