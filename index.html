@@ -369,6 +369,34 @@ async function locate(cep,num,txt){
 const sem=t=>String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
 function lev(a,b){if(Math.abs(a.length-b.length)>1)return 9;const m=[];for(let i=0;i<=a.length;i++){m[i]=[i]}for(let j=0;j<=b.length;j++)m[0][j]=j;for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)m[i][j]=Math.min(m[i-1][j]+1,m[i][j-1]+1,m[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return m[a.length][b.length]}
 const tokOk=(t,alvo)=>alvo.split(' ').some(w=>w===t||(t.length>=4&&(w.startsWith(t)||t.startsWith(w)&&w.length>=4||lev(t,w)<=1)));
+async function cidadeUF(){
+  const o=(cfg.frete_origem||'Cabo Frio, RJ');const k='cuf:'+o;const c=ls.get(k,null);if(c)return c;
+  let v=null;
+  try{
+    const mc=o.match(COORD),mp=o.match(/\b(\d{5})-?(\d{3})\b/);
+    if(mp){const r=await fetch('https://viacep.com.br/ws/'+mp[1]+mp[2]+'/json/');const d=await r.json();if(d&&!d.erro)v={cidade:d.localidade,uf:d.uf}}
+    if(!v){
+      const u=mc?`https://nominatim.openstreetmap.org/reverse?format=json&addressdetails=1&lat=${mc[1]}&lon=${mc[2]}`:'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&countrycodes=br&q='+encodeURIComponent(o);
+      const r=await fetch(u,{headers:{'Accept-Language':'pt-BR'}});let d=await r.json();d=Array.isArray(d)?d[0]:d;const a=(d&&d.address)||{};
+      const cid=a.city||a.town||a.municipality||a.village||'';const uf=String(a['ISO3166-2-lvl4']||'').replace('BR-','');
+      if(cid&&uf)v={cidade:cid,uf}}
+  }catch(e){}
+  if(v)ls.set(k,v);return v}
+async function viaList(q){
+  const cu=await cidadeUF();if(!cu)return[];
+  const partes=q.split(',').map(x=>x.trim()).filter(Boolean);
+  let rua=partes[0]||q,dica=partes.slice(1);
+  if(partes.length>=2&&/^(rua|r|avenida|av|travessa|tv|estrada|rodovia|alameda|praca|beco)\.?$/i.test(partes[0])){rua=partes[0]+' '+partes[1];dica=partes.slice(2)}
+  const nome=rua.replace(/^(rua|r|avenida|av|travessa|tv|trav|estrada|est|rodovia|alameda|al|praca|beco)\b[\s.]*/i,'').trim();
+  if(nome.length<3)return[];
+  let d=[];try{const r=await fetch(`https://viacep.com.br/ws/${cu.uf}/${encodeURIComponent(cu.cidade)}/${encodeURIComponent(nome)}/json/`);d=await r.json()}catch(e){}
+  if(!Array.isArray(d))return[];
+  const toks=sem(dica.join(' ')).split(' ').filter(t=>t.length>=3);
+  const seen={},out=[];
+  d.forEach(x=>{if(!x.logradouro)return;const k=sem(x.logradouro+' '+x.bairro);if(seen[k])return;seen[k]=1;
+    const alvo=sem(x.bairro+' '+x.logradouro);out.push({rua:x.logradouro,bairro:x.bairro||'',cep:String(x.cep||'').replace(/\D/g,''),hit:toks.length?toks.filter(t=>tokOk(t,alvo)).length:0})});
+  out.sort((a,b)=>(b.hit-a.hit)||a.bairro.localeCompare(b.bairro,'pt-BR'));
+  return out.slice(0,12)}
 async function geoMulti(q,og){
   const tipo=/^(rua|r|avenida|av|travessa|tv|trav|estrada|est|rodovia|alameda|al|praca|pca|beco)\b[\s.,]*/i;
   const base=q.replace(/\s+/g,' ').trim();
@@ -630,6 +658,11 @@ function aFrete(){
     try{
       const cepOk=($('#kcep').value||'').replace(/\D/g,'').length===8,txtK=$('#kend').value.trim();
       if(!cepOk&&txtK&&!COORD.test(txtK)&&!/\d{5}-?\d{3}/.test(txtK)){
+        const vl=await viaList(txtK);
+        if(vl.length){
+          $('#kres').innerHTML=`<div class="box" style="background:#f3ecff"><b>${vl.length>1?'Achei mais de um endereço. Toque no correto:':'Confirme o endereço:'}</b>${vl.map((o,i)=>`<button class="btn small ghost block" style="margin-top:8px;text-align:left" data-vl="${i}">📍 ${h(o.rua)} — <b>${h(o.bairro||'sem bairro')}</b> <span class="muted">(CEP ${h(fmtCep(o.cep))})</span></button>`).join('')}<p class="muted">Se souber o número, preencha o campo "Número" antes de tocar.</p></div>`;
+          document.querySelectorAll('[data-vl]').forEach(bt=>bt.onclick=()=>{const o=vl[+bt.dataset.vl];$('#kcep').value=o.cep;$('#kend').value='';$('#kgo').click()});
+          b.disabled=false;b.textContent='Calcular';return}
         const og=await locate('','',cfg.frete_origem||'Cabo Frio, RJ');if(og.pt)BIAS=og.pt;
         const op=await geoMulti(txtK,og.pt);
         if(!op.length)throw new Error('Não encontrei esse endereço perto da loja. Confira o nome da rua ou use o CEP.');
