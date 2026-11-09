@@ -555,7 +555,7 @@ async function vRecibo(cod){
 }
 
 /* ---------- administração ---------- */
-let adm={tab:'pedidos',pedidos:[],clientes:[],edit:null,files:[],np:null,cedit:null,cq:''};
+let adm={tab:'pedidos',pedidos:[],clientes:[],custos:{},edit:null,files:[],np:null,cedit:null,cq:''};
 async function vAdmin(){
   if(!sess){
     $('#app').innerHTML=`<div class="wrap"><h2 style="margin:16px 0">Área da loja 🔐</h2><div class="box">
@@ -567,6 +567,7 @@ async function vAdmin(){
   if(!ok){$('#app').innerHTML=`<div class="wrap empty"><div class="big">🚫</div><h2>Esta conta não é da loja</h2><button class="btn" id="so">Sair</button></div>`;$('#so').onclick=sair;return}
   adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc').catch(()=>[]);
   adm.clientes=await api('/rest/v1/loja_clientes?select=*&order=nome.asc').catch(()=>[]);
+  await loadCustos();
   prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc').catch(()=>prods);prods.sort(ABC);
   drawAdmin();
 }
@@ -701,12 +702,16 @@ document.addEventListener('click',ev=>{const b=ev.target.closest&&ev.target.clos
   const msg=`Olá, ${p.cliente_nome}! 🚚 Seu pedido ${p.codigo} da ${cfg.nome} já saiu para entrega e deve chegar por volta das ${hh} (previsão aproximada, pode variar com o trânsito). Qualquer dúvida, é só chamar!`;
   const num='55'+String(p.cliente_tel||'').replace(/\D/g,'').replace(/^55/,'');
   window.open('https://wa.me/'+num+'?text='+encodeURIComponent(msg),'_blank')});
+async function loadCustos(){const r=await api('/rest/v1/loja_custos?select=*').catch(()=>[]);adm.custos={};(Array.isArray(r)?r:[]).forEach(x=>{adm.custos[x.produto_id]=Number(x.custo)})}
+const pct=(v,c)=>c>0?((v-c)/c*100):null;
+const fmtp=x=>(Math.round(x*10)/10).toString().replace('.',',')+'%';
+function lucroTxt(v,c){if(!(c>0)||!(v>0))return '';const l=v-c;return `${brl(l)} de lucro · <b>${fmtp(pct(v,c))}</b> sobre a compra (margem ${fmtp(l/v*100)})`}
 function aProdutos(){
   if(adm.edit){return aForm()}
-  $('#ad').innerHTML=`<button class="btn block" id="np">+ Novo produto</button>`+prods.map((p,i)=>`<div class="box row"><div class="th">${foto(p)?`<img src="${h(foto(p))}" alt="">`:'🎁'}</div><div class="grow"><b>${h(p.nome)}</b><div class="muted">${brl(p.preco)} ${p.ativo?'':'· 🙈 oculto'}</div></div><button class="btn small ghost" data-e="${p.id}">Editar</button><button class="btn small" style="background:#e53935;margin-left:6px" data-dp="${p.id}" aria-label="Excluir">🗑️</button></div>`).join('');
-  $('#np').onclick=()=>{adm.edit={nome:'',descricao:'',preco:'',categoria:'',imagens:[],estoque:null,ativo:true};adm.files=[];aProdutos()};
+  $('#ad').innerHTML=`<button class="btn block" id="np">+ Novo produto</button>`+prods.map((p,i)=>`<div class="box row"><div class="th">${foto(p)?`<img src="${h(foto(p))}" alt="">`:'🎁'}</div><div class="grow"><b>${h(p.nome)}</b><div class="muted">${brl(p.preco)} ${p.ativo?'':'· 🙈 oculto'}</div>${adm.custos[p.id]>0?`<div class="muted" style="font-size:12.5px">Compra ${brl(adm.custos[p.id])} · lucro <b>${fmtp(pct(Number(p.preco),adm.custos[p.id]))}</b></div>`:''}</div><button class="btn small ghost" data-e="${p.id}">Editar</button><button class="btn small" style="background:#e53935;margin-left:6px" data-dp="${p.id}" aria-label="Excluir">🗑️</button></div>`).join('');
+  $('#np').onclick=()=>{adm.edit={nome:'',descricao:'',preco:'',custo:'',categoria:'',imagens:[],estoque:null,ativo:true};adm.files=[];aProdutos()};
   document.querySelectorAll('[data-dp]').forEach(b=>b.onclick=async()=>{const p=prod(b.dataset.dp);if(!p||!confirm('Excluir o produto "'+p.nome+'"? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'DELETE'});prods=prods.filter(x=>x.id!==p.id);toast('Produto excluído');aProdutos()}catch(e){toast(e.message)}});
-  document.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{adm.edit=JSON.parse(JSON.stringify(prod(b.dataset.e)));adm.files=[];aProdutos()});
+  document.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{adm.edit=JSON.parse(JSON.stringify(prod(b.dataset.e)));adm.edit.custo=adm.custos[b.dataset.e]??'';adm.files=[];aProdutos()});
 }
 function catOpts(cur){const m={};prods.forEach(x=>{const c=catNorm(x.categoria);if(c&&!m[catKey(c)])m[catKey(c)]=c});
   const c0=catNorm(cur);if(c0&&!m[catKey(c0)])m[catKey(c0)]=c0;
@@ -720,6 +725,8 @@ function aForm(){
   <label for="pn1">Nome</label><input class="f" id="pn1" value="${h(p.nome)}">
   <label for="pp">Preço (R$)</label><input class="f" id="pp" inputmode="decimal" value="${p.preco}">
   <label for="ppa">Preço de atacado (R$, opcional)</label><input class="f" id="ppa" inputmode="decimal" value="${p.preco_atacado??''}">
+  <label for="pcu">Valor de compra / custo (R$) — só você vê</label><input class="f" id="pcu" inputmode="decimal" value="${p.custo!==undefined&&p.custo!==''?String(p.custo).replace('.',','):''}">
+  <div class="box" id="plc" style="background:#f0fdf4"></div>
   <label for="pc1">Categoria</label><select class="f" id="pc1">${catOpts(p.categoria)}</select><input class="f" id="pc2" placeholder="Nome da nova categoria" style="display:none;margin-top:6px">
   <label for="pd">Descrição</label><textarea class="f" id="pd" rows="4">${h(p.descricao)}</textarea>
   <label for="pe">Estoque (deixe vazio para não controlar; 0 = esgotado)</label><input class="f" id="pe" inputmode="numeric" value="${p.estoque??''}">
@@ -730,7 +737,11 @@ function aForm(){
   $('#pa').onclick=()=>$('#pf').click();
   $('#pf').onchange=e=>{adm.files=[...adm.files,...e.target.files];$('#pn').textContent=adm.files.length+' foto(s) para enviar'};
   document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{p.imagens.splice(+b.dataset.r,1);capture();aForm()});
-  const capture=()=>{p.nome=$('#pn1').value;p.preco=$('#pp').value;p.preco_atacado=$('#ppa').value;p.categoria=$('#pc1').value==='__nova'?$('#pc2').value.trim():$('#pc1').value;p.descricao=$('#pd').value;p.estoque=$('#pe').value===''?null:parseInt($('#pe').value,10);p.ativo=$('#pa1').checked};
+  const capture=()=>{p.nome=$('#pn1').value;p.preco=$('#pp').value;p.preco_atacado=$('#ppa').value;p.custo=$('#pcu').value;p.categoria=$('#pc1').value==='__nova'?$('#pc2').value.trim():$('#pc1').value;p.descricao=$('#pd').value;p.estoque=$('#pe').value===''?null:parseInt($('#pe').value,10);p.ativo=$('#pa1').checked};
+  const num=x=>parseFloat(String(x||'').replace(',','.'));
+  const luc=()=>{const c=num($('#pcu').value),v=num($('#pp').value),a=num($('#ppa').value);const l1=lucroTxt(v,c),l2=lucroTxt(a,c);
+    $('#plc').innerHTML=c>0?`<b>Lucro</b><div>Varejo: ${l1||'—'}</div>${a>0?`<div>Atacado: ${l2||'—'}</div>`:''}`:'<span class="muted">Informe o valor de compra para ver o lucro em porcentagem.</span>'};
+  ['#pp','#ppa','#pcu'].forEach(k=>$(k).oninput=luc);luc();
   $('#pcx').onclick=()=>{adm.edit=null;aProdutos()};
   if($('#pdx'))$('#pdx').onclick=async()=>{if(!$('#pdx').dataset.s){$('#pdx').dataset.s=1;$('#pdx').textContent='Tem certeza? Toque de novo';return}
     try{await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'DELETE'});prods=prods.filter(x=>x.id!==p.id);adm.edit=null;toast('Excluído');aProdutos()}catch(e){toast(e.message)}};
@@ -742,8 +753,14 @@ function aForm(){
       for(const f of adm.files)p.imagens.push(await upload(f,'produtos'));
       const row={nome:p.nome.trim().toUpperCase(),descricao:p.descricao,preco,categoria:p.categoria.trim(),imagens:p.imagens,estoque:p.estoque,ativo:p.ativo};
       const pa=parseFloat(String(p.preco_atacado??'').replace(',','.'));if(!isNaN(pa))row.preco_atacado=pa;else if(p.id&&prod(p.id)&&prod(p.id).preco_atacado!=null)row.preco_atacado=null;
+      let pid=p.id;
       if(p.id)await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'PATCH',json:row});
-      else await api('/rest/v1/loja_produtos',{method:'POST',json:row});
+      else{const r=await api('/rest/v1/loja_produtos',{method:'POST',json:row,headers:{Prefer:'return=representation'}});pid=r&&r[0]&&r[0].id}
+      const cu=parseFloat(String(p.custo??'').replace(',','.'));
+      try{if(pid&&!isNaN(cu))await api('/rest/v1/loja_custos',{method:'POST',json:{produto_id:pid,custo:cu},headers:{Prefer:'resolution=merge-duplicates,return=minimal'}});
+        else if(pid&&adm.custos[pid]!=null)await api('/rest/v1/loja_custos?produto_id=eq.'+pid,{method:'DELETE'})}
+      catch(e2){toast('Produto salvo, mas o custo não: '+e2.message)}
+      await loadCustos();
       prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc');prods.sort(ABC);adm.edit=null;adm.files=[];toast('Produto salvo! 🎉');aProdutos();
     }catch(e){toast(e.message);$('#ps').disabled=false;$('#ps').textContent='Salvar produto'}};
 }
