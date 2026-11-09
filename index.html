@@ -214,6 +214,7 @@ header.top .wrap{padding-top:6px!important;padding-bottom:6px!important}
 .ped .pit .q{font-weight:800;min-width:28px}.ped .pit .n{flex:1;font-weight:600}.ped .pit .v{font-weight:700;white-space:nowrap}
 .ped .ptot{display:flex;justify-content:space-between;align-items:center;font-size:17px;padding:10px 0 6px}.ped .ptot b{font-size:22px;color:#e91e63}
 .ped .pad{margin-top:4px}.ped select.f{margin-top:10px}.ped .pbt{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.ped .pit .n small{display:block;font-weight:500;color:#6b5a8e;font-size:13px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -494,7 +495,7 @@ async function finalizar(){
   ls.set('loja_cli',{nome,tel,end:$('#ce').value});
   try{
     const r=await rpc('loja_criar_pedido',{p_nome:nome,p_tel:tel,p_email:'',p_end:$('#ce').value,p_obs:$('#co').value,p_itens:cart,...(fr&&fr.valor>0?{p_frete:fr.valor,p_frete_desc:fr.desc}:{})});
-    const linhas=cart.map(i=>{const p=prod(i.id);return `• ${i.qtd}x ${p.nome} — ${brl(p.preco*i.qtd)}`}).join('\n');
+    const linhas=cart.map(i=>{const p=prod(i.id);return `• ${i.qtd}x ${p.nome} (${brl(p.preco)} cada) — ${brl(p.preco*i.qtd)}`}).join('\n');
     const txt=`Olá! Fiz um pedido na ${cfg.nome} 🛍️\n\nPedido: ${r.codigo}\n${linhas}${fr?'\n• '+(fr.tipo==='retirada'?'Retirada na loja — sem frete':fr.desc+' — '+brl(fr.valor)):''}\n\nTotal: ${brl(r.total)}\nNome: ${nome}${$('#ce').value?'\nEndereço: '+$('#ce').value:''}${$('#co').value?'\nObs: '+$('#co').value:''}\n\nAcompanhar: ${location.origin}/#/pedido/${r.codigo}`;
     cart=[];fr=null;saveCart();
     ls.set('loja_ult',r.codigo);
@@ -515,7 +516,7 @@ async function vPedido(cod){
   const msgZap=`Olá! Sobre o pedido ${p.codigo} da ${cfg.nome}.`;
   $('#app').innerHTML=`<div class="wrap"><h2 style="margin:16px 0">Pedido ${h(p.codigo)}</h2>
   <div class="box"><span class="tag" style="background:${st[1]}">${st[0]}</span>
-  ${p.itens.map(i=>`<div class="row" style="margin:10px 0"><div class="th">${i.imagem?`<img src="${h(i.imagem)}" alt="">`:'🎁'}</div><div class="grow"><b>${h(i.nome)}</b><div class="muted">${i.qtd} x ${brl(i.preco)}</div></div><b>${brl(i.preco*i.qtd)}</b></div>`).join('')}
+  ${p.itens.map(i=>`<div class="row" style="margin:10px 0"><div class="th">${i.imagem?`<img src="${h(i.imagem)}" alt="">`:'🎁'}</div><div class="grow"><b>${h(i.nome)}</b><div class="muted">${i.qtd} x ${brl(i.preco)} cada</div></div><b>${brl(i.preco*i.qtd)}</b></div>`).join('')}
   <div class="row"><b class="grow">Total</b><span class="price" style="font-size:26px">${brl(p.total)}</span></div></div>
   ${cfg.pix_chave&&p.status!=='cancelado'&&p.status!=='pago'&&p.status!=='enviado'?`<div class="box"><h3>Pagar com Pix 💸</h3><p class="muted">Chave Pix${cfg.pix_nome?' ('+h(cfg.pix_nome)+')':''}:</p><p><b style="word-break:break-all">${h(cfg.pix_chave)}</b></p>
   <button class="btn small violet" id="cpk">Copiar chave</button> <button class="btn small ghost" id="cpc">Copiar Pix copia e cola (${brl(p.total)})</button></div>`:''}
@@ -543,10 +544,10 @@ async function vRecibo(cod){
   let p;try{p=await rpc('loja_buscar_pedido',{p_codigo:cod})}catch(e){}
   if(!p){location.hash='#/';return}
   const d=new Date(p.created_at).toLocaleDateString('pt-BR');
-  const txt=`${p.status==='pago'||p.status==='enviado'?'Recibo':'Pedido'} ${cfg.nome} - Pedido ${p.codigo}\nCliente: ${p.cliente_nome}\n${p.itens.map(i=>`${i.qtd}x ${i.nome} - ${brl(i.preco*i.qtd)}`).join('\n')}\nTotal: ${brl(p.total)}\nStatus: ${(STATUS[p.status]||[p.status])[0]}`;
+  const txt=`${p.status==='pago'||p.status==='enviado'?'Recibo':'Pedido'} ${cfg.nome} - Pedido ${p.codigo}\nCliente: ${p.cliente_nome}\n${p.itens.map(i=>`${i.qtd}x ${i.nome} (${brl(i.preco)} cada) - ${brl(i.preco*i.qtd)}`).join('\n')}\nTotal: ${brl(p.total)}\nStatus: ${(STATUS[p.status]||[p.status])[0]}`;
   $('#app').innerHTML=`<div class="wrap"><div class="recibo"><div style="text-align:center"><h2>🦊 ${h(cfg.nome)}</h2><b>${p.status==='pago'||p.status==='enviado'?'RECIBO DE PAGAMENTO':'RESUMO DO PEDIDO'}</b><div class="muted">Pedido ${h(p.codigo)} · ${d}</div></div>
   <p><b>Cliente:</b> ${h(p.cliente_nome)}<br><b>Telefone:</b> ${h(p.cliente_tel)}${p.endereco?`<br><b>Entrega:</b> ${h(p.endereco)}`:''}</p>
-  <table>${p.itens.map(i=>`<tr><td>${i.qtd} x ${h(i.nome)}</td><td>${brl(i.preco*i.qtd)}</td></tr>`).join('')}<tr><td><b>TOTAL</b></td><td><b style="font-size:20px">${brl(p.total)}</b></td></tr></table>
+  <table>${p.itens.map(i=>`<tr><td>${i.qtd} x ${h(i.nome)}<div class="muted" style="font-size:13px">${brl(i.preco)} cada</div></td><td>${brl(i.preco*i.qtd)}</td></tr>`).join('')}<tr><td><b>TOTAL</b></td><td><b style="font-size:20px">${brl(p.total)}</b></td></tr></table>
   <p style="text-align:center"><span class="tag" style="background:${(STATUS[p.status]||[0,'#999'])[1]}">${(STATUS[p.status]||[p.status])[0]}</span></p>
   <p class="muted" style="text-align:center;font-size:13px">Obrigado pela compra! 💜</p></div>
   <div class="noprint" style="max-width:520px;margin:0 auto;display:grid;gap:10px"><button class="btn violet" onclick="window.print()">Salvar em PDF / Imprimir</button><a class="btn green" href="https://wa.me/?text=${encodeURIComponent(txt)}">Enviar pelo WhatsApp</a><a class="btn ghost" href="javascript:history.back()">Voltar</a></div></div>`;
@@ -591,7 +592,7 @@ function aPedidos(){
   <div class="pst"><span class="tag" style="background:${st[1]}">${st[0]}</span></div>
   <div class="pn">${h(p.cliente_nome)}</div>
   <div class="muted">${new Date(p.created_at).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})} · 📞 ${h(p.cliente_tel)}</div>
-  <ul class="pit">${p.itens.map(i=>`<li><span class="q">${i.qtd}×</span><span class="n">${h(String(i.nome).toUpperCase())}</span><span class="v">${brl(i.preco*i.qtd)}</span></li>`).join('')}</ul>
+  <ul class="pit">${p.itens.map(i=>`<li><span class="q">${i.qtd}×</span><span class="n">${h(String(i.nome).toUpperCase())}<small>${brl(i.preco)} cada</small></span><span class="v">${brl(i.preco*i.qtd)}</span></li>`).join('')}</ul>
   <div class="ptot"><span>Total</span><b>${brl(p.total)}</b></div>
   ${p.endereco?`<div class="muted pad">📍 ${h(p.endereco)}</div>`:''}${ob?`<div class="muted pad">📝 ${h(ob)}</div>`:''}
   ${p.comprovante_url?`<p><a href="${h(p.comprovante_url)}" target="_blank"><img src="${h(p.comprovante_url)}" style="max-width:140px;border-radius:12px" alt="comprovante"></a></p>`:''}
