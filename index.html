@@ -597,9 +597,14 @@ function aPedidos(){
   ${p.endereco?`<div class="muted pad">📍 ${h(p.endereco)}</div>`:''}${ob?`<div class="muted pad">📝 ${h(ob)}</div>`:''}
   ${p.comprovante_url?`<p><a href="${h(p.comprovante_url)}" target="_blank"><img src="${h(p.comprovante_url)}" style="max-width:140px;border-radius:12px" alt="comprovante"></a></p>`:''}
   <select class="f" data-s="${p.id}">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===p.status?'selected':''}>${v[0]}</option>`).join('')}</select>
-  <div class="pbt"><a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a><a class="btn small green" href="${wa}">WhatsApp</a>${p.endereco?`<a class="btn small" style="background:#33ccff;color:#05324a" target="_blank" rel="noopener" href="https://waze.com/ul?q=${encodeURIComponent(p.endereco)}&navigate=yes">🧭 Waze</a>`:''}<button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button></div>
+  <div class="pbt"><button class="btn small" style="background:#f59e0b" data-ed="${p.id}">✏️ Editar</button><a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a><a class="btn small green" href="${wa}">WhatsApp</a>${p.endereco?`<a class="btn small" style="background:#33ccff;color:#05324a" target="_blank" rel="noopener" href="https://waze.com/ul?q=${encodeURIComponent(p.endereco)}&navigate=yes">🧭 Waze</a>`:''}<button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button></div>
   ${p.endereco?`<button class="btn block" style="margin-top:10px;background:linear-gradient(90deg,#16a34a,#22c55e)" data-eta="${p.id}">🚚 Avisar: pedido a caminho</button><div class="eta" id="eta-${p.id}"></div>`:''}</div>`};
   $('#ad').innerHTML=`<button class="btn block" id="npd">+ Novo pedido (manual)</button><p></p>`+(adm.pedidos.length?adm.pedidos.map(card).join(''):'<div class="empty"><div class="big">📭</div><h2>Nenhum pedido ainda</h2></div>');
+  document.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.ed);if(!p)return;
+    const fi=p.itens.find(i=>!i.id&&/^frete/i.test(String(i.nome)));
+    adm.np={edit:p.id,codigo:p.codigo,cid:p.cliente_id||'',nome:p.cliente_nome||'',tel:p.cliente_tel==='-'?'':(p.cliente_tel||''),end:p.endereco||'',salvar:false,tipo:/^\[ATACADO\]/.test(p.obs||'')?'atacado':'varejo',
+      itens:p.itens.filter(i=>i!==fi).map(i=>({id:i.id,nome:i.nome,preco:Number(i.preco),qtd:i.qtd,imagem:i.imagem||''})),frete:fi?String(fi.preco).replace('.',','):'',obs:(p.obs||'').replace(/^\[ATACADO\]\s*/,''),status:p.status,pid:'',qtd:'1'};
+    aPedidos();window.scrollTo(0,0)});
   $('#npd').onclick=()=>{adm.np={cid:'',nome:'',tel:'',end:'',salvar:true,tipo:'varejo',itens:[],frete:'',obs:'',status:'aguardando_pagamento',pid:'',qtd:'1'};aPedidos()};
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.del);if(!p||!confirm('Excluir o pedido '+p.codigo+' de '+p.cliente_nome+'? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_pedidos?id=eq.'+p.id,{method:'DELETE'});adm.pedidos=adm.pedidos.filter(x=>x.id!==p.id);toast('Pedido excluído');drawAdmin()}catch(e){toast(e.message)}});
   document.querySelectorAll('[data-s]').forEach(s=>s.onchange=async()=>{try{await api('/rest/v1/loja_pedidos?id=eq.'+s.dataset.s,{method:'PATCH',json:{status:s.value}});adm.pedidos.find(p=>p.id===s.dataset.s).status=s.value;toast('Status atualizado ✅');drawAdmin()}catch(e){toast(e.message)}});
@@ -637,14 +642,14 @@ function precoDe(p,tipo){const a=Number(p.preco_atacado);return tipo==='atacado'
 function npTotal(n){const f=parseFloat(String(n.frete||'0').replace(',','.'))||0;return n.itens.reduce((t,i)=>t+i.preco*i.qtd,0)+(f>0?f:0)}
 function aPedidoForm(){
   const n=adm.np;
-  const cap=()=>{if(!$('#npc'))return;n.cid=$('#npc').value;n.tipo=$('#nptp').value;if($('#npn')){n.nome=$('#npn').value;n.tel=$('#npt').value;n.end=$('#npe').value;n.salvar=$('#nps').checked}
+  const cap=()=>{if(!$('#npst'))return;if($('#npc')&&!n.edit)n.cid=$('#npc').value;n.tipo=$('#nptp').value;if($('#npn')){n.nome=$('#npn').value;n.tel=$('#npt').value;n.end=$('#npe').value;if($('#nps'))n.salvar=$('#nps').checked}
     n.frete=$('#npf').value;n.obs=$('#npo').value;n.status=$('#npst').value;n.pid=$('#npp').value;n.qtd=$('#npq').value;
     document.querySelectorAll('[data-pr]').forEach(e=>{n.itens[+e.dataset.pr].preco=parseFloat(String(e.value).replace(',','.'))||0});
     document.querySelectorAll('[data-qt]').forEach(e=>{n.itens[+e.dataset.qt].qtd=Math.max(1,parseInt(e.value)||1)})};
-  const cli=adm.clientes.find(c=>c.id===n.cid);
-  $('#ad').innerHTML=`<div class="box"><h3>Novo pedido (manual)</h3>
-  <label for="npc">Cliente</label><select class="f" id="npc"><option value="">➕ Novo cliente…</option>${adm.clientes.map(c=>`<option value="${c.id}" ${c.id===n.cid?'selected':''}>${h(c.nome)}${c.tel?' · '+h(c.tel):''}</option>`).join('')}</select>
-  ${cli?`<div class="muted">${h(cli.tel)}${cli.endereco?' · 📍 '+h(cli.endereco):''}</div>`:`<label for="npn">Nome do cliente</label><input class="f" id="npn" value="${h(n.nome)}"><label for="npt">Telefone / WhatsApp</label><input class="f" id="npt" type="tel" value="${h(n.tel)}"><label for="npe">Endereço (opcional)</label><input class="f" id="npe" value="${h(n.end)}"><label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="nps" ${n.salvar?'checked':''}> Salvar este cliente na lista</label>`}
+  const cli=n.edit?null:adm.clientes.find(c=>c.id===n.cid);
+  $('#ad').innerHTML=`<div class="box"><h3>${n.edit?'Editar pedido '+h(n.codigo):'Novo pedido (manual)'}</h3>
+  <label for="npc" style="${n.edit?'display:none':''}">Cliente</label><select class="f" id="npc" style="${n.edit?'display:none':''}"><option value="">➕ Novo cliente…</option>${adm.clientes.map(c=>`<option value="${c.id}" ${c.id===n.cid?'selected':''}>${h(c.nome)}${c.tel?' · '+h(c.tel):''}</option>`).join('')}</select>
+  ${cli?`<div class="muted">${h(cli.tel)}${cli.endereco?' · 📍 '+h(cli.endereco):''}</div>`:`<label for="npn">Nome do cliente</label><input class="f" id="npn" value="${h(n.nome)}"><label for="npt">Telefone / WhatsApp</label><input class="f" id="npt" type="tel" value="${h(n.tel)}"><label for="npe">Endereço (opcional)</label><input class="f" id="npe" value="${h(n.end)}"><label style="display:flex;gap:8px;align-items:center;margin-top:8px;display:${n.edit?'none':'flex'}"><input type="checkbox" id="nps" ${n.salvar?'checked':''}> Salvar este cliente na lista</label>`}
   <label for="nptp">Tipo de venda</label><select class="f" id="nptp"><option value="varejo" ${n.tipo==='varejo'?'selected':''}>Varejo</option><option value="atacado" ${n.tipo==='atacado'?'selected':''}>Atacado (pedido mínimo: 8 peças)</option></select>
   <h3 style="margin-top:16px">Itens</h3>
   ${n.itens.map((i,k)=>`<div class="box"><b>${h(i.nome)}</b><div class="row" style="gap:8px;margin-top:6px"><div class="grow"><label>Qtd</label><input class="f" type="number" min="1" data-qt="${k}" value="${i.qtd}"></div><div class="grow"><label>Preço (R$)</label><input class="f" inputmode="decimal" data-pr="${k}" value="${String(i.preco).replace('.',',')}"></div><button class="btn small" style="background:#e53935" data-ri="${k}">🗑️</button></div></div>`).join('')||'<p class="muted">Nenhum item ainda.</p>'}
@@ -674,6 +679,8 @@ function aPedidoForm(){
     if(fr>0)itens.push({id:null,nome:'Frete',preco:fr,qtd:1,imagem:''});
     $('#npsv').disabled=true;$('#npsv').textContent='Salvando...';
     try{
+      if(n.edit){await api('/rest/v1/loja_pedidos?id=eq.'+n.edit,{method:'PATCH',json:{cliente_nome:nome,cliente_tel:tel||'-',endereco:end,obs:((n.tipo==='atacado'?'[ATACADO] ':'')+n.obs.trim()).trim(),itens,total:npTotal(n),status:n.status}});
+        adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc');adm.np=null;toast('Pedido atualizado! ✅');drawAdmin();return}
       if(!cli&&n.salvar){const r=await api('/rest/v1/loja_clientes',{method:'POST',json:{nome,tel,endereco:end},headers:{Prefer:'return=representation'}});if(r&&r[0])cid=r[0].id;adm.clientes=await api('/rest/v1/loja_clientes?select=*&order=nome.asc')}
       const codigo=Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
       await api('/rest/v1/loja_pedidos',{method:'POST',json:{codigo,cliente_nome:nome,cliente_tel:tel||'-',endereco:end,obs:((n.tipo==='atacado'?'[ATACADO] ':'')+n.obs.trim()).trim(),itens,total:npTotal(n),status:n.status,cliente_id:cid,origem:'manual'}});
