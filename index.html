@@ -280,7 +280,8 @@ const emoji=['🎁','🛍️','✨','🧴','💧','🎀'];
 const SZ={pp:1,xs:1,p:2,pequeno:2,pequena:2,s:2,m:3,medio:3,media:3,'médio':3,'média':3,g:4,grande:4,l:4,gg:5,xl:5,xg:5};
 function szKey(n){n=String(n||'').trim().replace(/\b(bafeira|bafo|tamanho|com|de|da|do)\b/ig,' ').replace(/\s[àa]\s/ig,' ').replace(/\s+/g,' ').trim();
   let m=n.match(/(\d+(?:[.,]\d+)?)\s*(cm|mm|ml|lts?|litros?|kg|l|g|m)\b/i);
-  if(m){const u=m[2].toLowerCase(),v=parseFloat(m[1].replace(',','.'));const f=(u==='cm'&&/[.,]/.test(m[1])&&v<10)?100:u==='ml'?.001:u==='mm'?.1:u==='m'?100:u==='g'?.001:1;return[(n.slice(0,m.index)+' '+n.slice(m.index+m[0].length)).replace(/\s+/g,' ').trim(),v*f]}
+  if(m){const u=m[2].toLowerCase(),v=parseFloat(m[1].replace(',','.'));const f=(u==='cm'&&/[.,]/.test(m[1])&&v<10)?100:u==='ml'?.001:u==='mm'?.1:u==='m'?100:u==='g'?.001:1;let base=(n.slice(0,m.index)+' '+n.slice(m.index+m[0].length)),vel=0;const mv=base.match(/(\d+)\s*velas?\b/i);if(mv){vel=parseInt(mv[1]);base=base.replace(mv[0],' ')}
+    return[base.replace(/\s+/g,' ').trim(),v*f+vel/1000]}
   m=n.match(/^(.*?)[\s\-–(]*\b(pp|xs|p|pequen[oa]|s|m|m[eé]di[oa]|g|grande|l|gg|xl|xg)\b[)\s]*$/i);
   if(m)return[m[1].trim(),SZ[m[2].toLowerCase().replace('é','e')]||SZ[m[2].toLowerCase()]||0];
   m=n.match(/^(.*?)[\s\-–(]*(?:n[ºo°.]?\s*)?(\d+)[)\s]*$/i);
