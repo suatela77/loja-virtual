@@ -351,8 +351,8 @@ async function geo(q){
   const v={lat:+d[0].lat,lon:+d[0].lon};ls.set(k,v);return v}
 function hav(a,b){const R=6371,t=x=>x*Math.PI/180,dl=t(b.lat-a.lat),dn=t(b.lon-a.lon);const x=Math.sin(dl/2)**2+Math.cos(t(a.lat))*Math.cos(t(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
 async function distKm(a,b){
-  try{const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`);const d=await r.json();if(d&&d.routes&&d.routes[0])return{km:d.routes[0].distance/1000,exato:true}}catch(e){}
-  return{km:hav(a,b)*1.3,exato:false}}
+  try{const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`);const d=await r.json();if(d&&d.routes&&d.routes[0])return{km:d.routes[0].distance/1000,min:d.routes[0].duration/60,exato:true}}catch(e){}
+  {const k=hav(a,b)*1.3;return{km:k,min:k/35*60,exato:false}}}
 const COORD=/(-?\d{1,3}\.\d{3,})\s*[,;]\s*(-?\d{1,3}\.\d{3,})/;
 const fmtCep=c=>c.replace(/(\d{5})(\d{3})/,'$1-$2');
 async function cepCoord(cep){
@@ -445,7 +445,7 @@ async function freteCore(cep,num,txt){
   const d=await distKm(o.pt,d0.pt);
   let km=d.km*(cfg.frete_volta?2:1);km=Math.round(km*10)/10;
   let valor=Math.max(Number(cfg.frete_min)||0,km*Number(cfg.frete_km));valor=Math.round(valor*100)/100;
-  return{tipo:'entrega',km,valor,end:d0.end,pt:d0.pt,desc:`Frete (${km.toString().replace('.',',')} km)`,aprox:d0.aprox||o.aprox||!d.exato}}
+  return{tipo:'entrega',km,min:d.min,valor,end:d0.end,pt:d0.pt,desc:`Frete (${km.toString().replace('.',',')} km)`,aprox:d0.aprox||o.aprox||!d.exato}}
 async function calcFrete(){
   const msg=$('#fmsg'),btn=$('#fcalc');
   btn.disabled=true;btn.textContent='Calculando...';msg.textContent='';
@@ -597,7 +597,8 @@ function aPedidos(){
   ${p.endereco?`<div class="muted pad">📍 ${h(p.endereco)}</div>`:''}${ob?`<div class="muted pad">📝 ${h(ob)}</div>`:''}
   ${p.comprovante_url?`<p><a href="${h(p.comprovante_url)}" target="_blank"><img src="${h(p.comprovante_url)}" style="max-width:140px;border-radius:12px" alt="comprovante"></a></p>`:''}
   <select class="f" data-s="${p.id}">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===p.status?'selected':''}>${v[0]}</option>`).join('')}</select>
-  <div class="pbt"><a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a><a class="btn small green" href="${wa}">WhatsApp</a>${p.endereco?`<a class="btn small" style="background:#33ccff;color:#05324a" target="_blank" rel="noopener" href="https://waze.com/ul?q=${encodeURIComponent(p.endereco)}&navigate=yes">🧭 Waze</a>`:''}<button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button></div></div>`};
+  <div class="pbt"><a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a><a class="btn small green" href="${wa}">WhatsApp</a>${p.endereco?`<a class="btn small" style="background:#33ccff;color:#05324a" target="_blank" rel="noopener" href="https://waze.com/ul?q=${encodeURIComponent(p.endereco)}&navigate=yes">🧭 Waze</a>`:''}<button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button></div>
+  ${p.endereco?`<button class="btn block" style="margin-top:10px;background:linear-gradient(90deg,#16a34a,#22c55e)" data-eta="${p.id}">🚚 Avisar: pedido a caminho</button><div class="eta" id="eta-${p.id}"></div>`:''}</div>`};
   $('#ad').innerHTML=`<button class="btn block" id="npd">+ Novo pedido (manual)</button><p></p>`+(adm.pedidos.length?adm.pedidos.map(card).join(''):'<div class="empty"><div class="big">📭</div><h2>Nenhum pedido ainda</h2></div>');
   $('#npd').onclick=()=>{adm.np={cid:'',nome:'',tel:'',end:'',salvar:true,tipo:'varejo',itens:[],frete:'',obs:'',status:'aguardando_pagamento',pid:'',qtd:'1'};aPedidos()};
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.del);if(!p||!confirm('Excluir o pedido '+p.codigo+' de '+p.cliente_nome+'? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_pedidos?id=eq.'+p.id,{method:'DELETE'});adm.pedidos=adm.pedidos.filter(x=>x.id!==p.id);toast('Pedido excluído');drawAdmin()}catch(e){toast(e.message)}});
@@ -679,6 +680,19 @@ function aPedidoForm(){
       adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc');adm.np=null;toast('Pedido salvo! ✅');drawAdmin();
     }catch(e){toast(e.message);$('#npsv').disabled=false;$('#npsv').textContent='Salvar pedido'}};
 }
+document.addEventListener('click',async ev=>{const b=ev.target.closest&&ev.target.closest('[data-eta]');if(!b)return;
+  const p=adm.pedidos.find(x=>x.id===b.dataset.eta);if(!p)return;const box=document.getElementById('eta-'+p.id);
+  b.disabled=true;const t0=b.textContent;b.textContent='Calculando o trajeto...';
+  try{const r=await freteCore('','',p.endereco);const min=Math.max(5,Math.ceil(r.min/5)*5);
+    box.innerHTML=`<div class="box" style="background:#f0fdf4;margin-top:10px"><div>📍 Da loja até o cliente: <b>${String(r.km).replace('.',',')} km</b> · trajeto de <b>${min} min</b>${r.aprox?'<div class="muted">Endereço localizado pela região: tempo aproximado.</div>':''}</div><div class="muted" style="margin:6px 0">O horário de chegada é contado a partir do momento em que você tocar em enviar.</div><button class="btn block green" data-go="${p.id}" data-min="${min}">📲 Enviar aviso agora no WhatsApp</button></div>`;
+  }catch(e){toast(e.message||'Não consegui calcular o trajeto')}
+  b.disabled=false;b.textContent=t0});
+document.addEventListener('click',ev=>{const b=ev.target.closest&&ev.target.closest('[data-go]');if(!b)return;
+  const p=adm.pedidos.find(x=>x.id===b.dataset.go);if(!p)return;const min=+b.dataset.min;
+  const d=new Date(Date.now()+min*60000);const hh=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  const msg=`Olá, ${p.cliente_nome}! 🚚 Seu pedido ${p.codigo} da ${cfg.nome} já saiu para entrega e deve chegar por volta das ${hh} (previsão aproximada, pode variar com o trânsito). Qualquer dúvida, é só chamar!`;
+  const num='55'+String(p.cliente_tel||'').replace(/\D/g,'').replace(/^55/,'');
+  window.open('https://wa.me/'+num+'?text='+encodeURIComponent(msg),'_blank')});
 function aProdutos(){
   if(adm.edit){return aForm()}
   $('#ad').innerHTML=`<button class="btn block" id="np">+ Novo produto</button>`+prods.map((p,i)=>`<div class="box row"><div class="th">${foto(p)?`<img src="${h(foto(p))}" alt="">`:'🎁'}</div><div class="grow"><b>${h(p.nome)}</b><div class="muted">${brl(p.preco)} ${p.ativo?'':'· 🙈 oculto'}</div></div><button class="btn small ghost" data-e="${p.id}">Editar</button><button class="btn small" style="background:#e53935;margin-left:6px" data-dp="${p.id}" aria-label="Excluir">🗑️</button></div>`).join('');
