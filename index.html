@@ -548,17 +548,18 @@ async function vRecibo(cod){
 }
 
 /* ---------- administração ---------- */
-let adm={tab:'pedidos',pedidos:[],edit:null,files:[]};
+let adm={tab:'pedidos',pedidos:[],clientes:[],edit:null,files:[],np:null,cedit:null,cq:''};
 async function vAdmin(){
   if(!sess){
     $('#app').innerHTML=`<div class="wrap"><h2 style="margin:16px 0">Área da loja 🔐</h2><div class="box">
     <label for="ae">E-mail</label><input class="f" id="ae" type="email" autocomplete="username"><label for="as">Senha</label><input class="f" id="as" type="password" autocomplete="current-password">
-    <p></p><button class="btn block" id="ab">Entrar</button><p class="muted" style="font-size:14px">Use o mesmo e-mail e senha do Gestor de Imóveis. Se ainda não tem conta, crie primeiro no Gestor.</p></div></div>`;
+    <p></p><button class="btn block" id="ab">Entrar</button><p class="muted" style="font-size:14px">Use o e-mail e a senha do dono da loja.</p></div></div>`;
     $('#ab').onclick=async()=>{try{const r=await api('/auth/v1/token?grant_type=password',{method:'POST',json:{email:$('#ae').value.trim(),password:$('#as').value}});sess=r;ls.set('loja_sess',r);vAdmin()}catch(e){toast(e.message==='Invalid login credentials'?'E-mail ou senha incorretos':e.message)}};return}
   if(sess.refresh_token){try{const r=await api('/auth/v1/token?grant_type=refresh_token',{method:'POST',json:{refresh_token:sess.refresh_token}});sess=r;ls.set('loja_sess',r)}catch(e){sess=null;ls.set('loja_sess',null);return vAdmin()}}
   let ok=false;try{ok=await rpc('loja_virar_admin',{})}catch(e){if(/JWT|expired/i.test(e.message)){sess=null;ls.set('loja_sess',null);return vAdmin()}}
   if(!ok){$('#app').innerHTML=`<div class="wrap empty"><div class="big">🚫</div><h2>Esta conta não é da loja</h2><button class="btn" id="so">Sair</button></div>`;$('#so').onclick=sair;return}
   adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc').catch(()=>[]);
+  adm.clientes=await api('/rest/v1/loja_clientes?select=*&order=nome.asc').catch(()=>[]);
   prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc').catch(()=>prods);prods.sort(ABC);
   drawAdmin();
 }
@@ -567,25 +568,101 @@ function drawAdmin(){
   const pend=adm.pedidos.filter(p=>p.status==='aguardando_pagamento'||p.status==='comprovante_enviado').length;
   $('#app').innerHTML=`<div class="wrap"><div class="tabs">
   <button class="chip ${adm.tab==='pedidos'?'on':''}" data-t="pedidos">📦 Pedidos${pend?` (${pend})`:''}</button>
+  <button class="chip ${adm.tab==='clientes'?'on':''}" data-t="clientes">👥 Clientes</button>
   <button class="chip ${adm.tab==='produtos'?'on':''}" data-t="produtos">🛍️ Produtos</button>
   <button class="chip ${adm.tab==='frete'?'on':''}" data-t="frete">🚚 Frete</button>
   <button class="chip ${adm.tab==='config'?'on':''}" data-t="config">⚙️ Loja</button>
   <button class="chip" id="so">Sair</button></div>
   <div class="stats"><div class="stat"><b>${pend}</b>pedidos novos</div><div class="stat"><b>${adm.pedidos.length}</b>pedidos</div><div class="stat"><b>${prods.length}</b>produtos</div></div><div id="ad"></div></div>`;
-  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{adm.tab=b.dataset.t;adm.edit=null;drawAdmin()});
+  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{adm.tab=b.dataset.t;adm.edit=null;adm.np=null;adm.cedit=null;drawAdmin()});
   $('#so').onclick=sair;
-  ({pedidos:aPedidos,produtos:aProdutos,frete:aFrete,config:aConfig})[adm.tab]();
+  ({pedidos:aPedidos,clientes:aClientes,produtos:aProdutos,frete:aFrete,config:aConfig})[adm.tab]();
 }
 function aPedidos(){
-  $('#ad').innerHTML=adm.pedidos.length?adm.pedidos.map(p=>{const st=STATUS[p.status]||[p.status,'#999'];return `<div class="box"><div class="row"><b class="grow">${h(p.codigo)} · ${h(p.cliente_nome)}</b><span class="tag" style="background:${st[1]}">${st[0]}</span></div>
+  if(adm.np)return aPedidoForm();
+  $('#ad').innerHTML=`<button class="btn block" id="npd">+ Novo pedido (manual)</button><p></p>`+(adm.pedidos.length?adm.pedidos.map(p=>{const st=STATUS[p.status]||[p.status,'#999'];return `<div class="box"><div class="row"><b class="grow">${h(p.codigo)} · ${h(p.cliente_nome)}</b><span class="tag" style="background:${st[1]}">${st[0]}</span></div>
   <div class="muted">${new Date(p.created_at).toLocaleString('pt-BR')} · ${h(p.cliente_tel)}</div>
   <div>${p.itens.map(i=>`${i.qtd}x ${h(i.nome)}`).join(', ')}</div><div class="price">${brl(p.total)}</div>
   ${p.endereco?`<div class="muted">📍 ${h(p.endereco)}</div>`:''}${p.obs?`<div class="muted">📝 ${h(p.obs)}</div>`:''}
   ${p.comprovante_url?`<p><a href="${h(p.comprovante_url)}" target="_blank"><img src="${h(p.comprovante_url)}" style="max-width:140px;border-radius:12px" alt="comprovante"></a></p>`:''}
   <select class="f" data-s="${p.id}">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===p.status?'selected':''}>${v[0]}</option>`).join('')}</select><p></p>
-  <a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a> <button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button> <a class="btn small green" href="${waLink('').replace(/\/\/wa\.me\/\d*/,'//wa.me/55'+p.cliente_tel.replace(/\D/g,'').replace(/^55/,''))}${encodeURIComponent('Olá '+p.cliente_nome+'! Sobre seu pedido '+p.codigo+' na '+cfg.nome+': ')}">WhatsApp</a></div>`}).join(''):'<div class="empty"><div class="big">📭</div><h2>Nenhum pedido ainda</h2></div>';
+  <a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a> <button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button> <a class="btn small green" href="${waLink('').replace(/\/\/wa\.me\/\d*/,'//wa.me/55'+p.cliente_tel.replace(/\D/g,'').replace(/^55/,''))}${encodeURIComponent('Olá '+p.cliente_nome+'! Sobre seu pedido '+p.codigo+' na '+cfg.nome+': ')}">WhatsApp</a></div>`}).join(''):'<div class="empty"><div class="big">📭</div><h2>Nenhum pedido ainda</h2></div>');
+  $('#npd').onclick=()=>{adm.np={cid:'',nome:'',tel:'',end:'',salvar:true,itens:[],frete:'',obs:'',status:'aguardando_pagamento',pid:'',qtd:'1'};aPedidos()};
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.del);if(!p||!confirm('Excluir o pedido '+p.codigo+' de '+p.cliente_nome+'? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_pedidos?id=eq.'+p.id,{method:'DELETE'});adm.pedidos=adm.pedidos.filter(x=>x.id!==p.id);toast('Pedido excluído');drawAdmin()}catch(e){toast(e.message)}});
   document.querySelectorAll('[data-s]').forEach(s=>s.onchange=async()=>{try{await api('/rest/v1/loja_pedidos?id=eq.'+s.dataset.s,{method:'PATCH',json:{status:s.value}});adm.pedidos.find(p=>p.id===s.dataset.s).status=s.value;toast('Status atualizado ✅');drawAdmin()}catch(e){toast(e.message)}});
+}
+function aClientes(){
+  if(adm.cedit)return aClienteForm();
+  $('#ad').innerHTML=`<button class="btn block" id="nc">+ Novo cliente</button><p></p><input class="f" id="cq" placeholder="Buscar por nome ou telefone" value="${h(adm.cq)}"><p></p><div id="cl"></div>`;
+  const lista=()=>{const q=adm.cq.toLowerCase().trim();const l=adm.clientes.filter(c=>!q||((c.nome||'')+' '+(c.tel||'')).toLowerCase().includes(q));
+    $('#cl').innerHTML=l.length?l.map(c=>`<div class="box"><b>${h(c.nome)}</b><div class="muted">${h(c.tel)}${c.email?' · '+h(c.email):''}</div>${c.endereco?`<div class="muted">📍 ${h(c.endereco)}</div>`:''}${c.obs?`<div class="muted">📝 ${h(c.obs)}</div>`:''}<div class="muted">${adm.pedidos.filter(p=>p.cliente_id===c.id).length} pedido(s)</div><p></p><button class="btn small green" data-cp="${c.id}">+ Pedido</button> <button class="btn small ghost" data-ce="${c.id}">Editar</button> <button class="btn small" style="background:#e53935" data-cd="${c.id}">🗑️</button></div>`).join(''):'<div class="empty"><div class="big">👥</div><h2>Nenhum cliente</h2></div>';
+    document.querySelectorAll('[data-ce]').forEach(b=>b.onclick=()=>{adm.cedit={...adm.clientes.find(c=>c.id===b.dataset.ce)};aClientes()});
+    document.querySelectorAll('[data-cp]').forEach(b=>b.onclick=()=>{const c=adm.clientes.find(x=>x.id===b.dataset.cp);adm.np={cid:c.id,nome:'',tel:'',end:'',salvar:false,itens:[],frete:'',obs:'',status:'aguardando_pagamento',pid:'',qtd:'1'};adm.tab='pedidos';drawAdmin()});
+    document.querySelectorAll('[data-cd]').forEach(b=>b.onclick=async()=>{const c=adm.clientes.find(x=>x.id===b.dataset.cd);if(!c||!confirm('Excluir o cliente "'+c.nome+'"? Os pedidos dele continuam salvos.'))return;try{await api('/rest/v1/loja_clientes?id=eq.'+c.id,{method:'DELETE'});adm.clientes=adm.clientes.filter(x=>x.id!==c.id);toast('Cliente excluído');aClientes()}catch(e){toast(e.message)}});};
+  lista();
+  $('#cq').oninput=()=>{adm.cq=$('#cq').value;lista()};
+  $('#nc').onclick=()=>{adm.cedit={nome:'',tel:'',email:'',endereco:'',obs:''};aClientes()};
+}
+function aClienteForm(){
+  const c=adm.cedit;
+  $('#ad').innerHTML=`<div class="box"><h3>${c.id?'Editar cliente':'Novo cliente'}</h3>
+  <label for="cn">Nome</label><input class="f" id="cn" value="${h(c.nome)}">
+  <label for="ct">Telefone / WhatsApp</label><input class="f" id="ct" type="tel" value="${h(c.tel)}">
+  <label for="ce">E-mail (opcional)</label><input class="f" id="ce" type="email" value="${h(c.email)}">
+  <label for="cen">Endereço</label><input class="f" id="cen" value="${h(c.endereco)}">
+  <label for="co">Observações</label><textarea class="f" id="co" rows="3">${h(c.obs)}</textarea>
+  <p></p><button class="btn block" id="cs">Salvar cliente</button><p></p><button class="btn block ghost" id="cx">Cancelar</button></div>`;
+  $('#cx').onclick=()=>{adm.cedit=null;aClientes()};
+  $('#cs').onclick=async()=>{const row={nome:$('#cn').value.trim(),tel:$('#ct').value.trim(),email:$('#ce').value.trim(),endereco:$('#cen').value.trim(),obs:$('#co').value.trim()};
+    if(!row.nome){toast('Informe o nome');return}
+    $('#cs').disabled=true;$('#cs').textContent='Salvando...';
+    try{if(c.id)await api('/rest/v1/loja_clientes?id=eq.'+c.id,{method:'PATCH',json:row});else await api('/rest/v1/loja_clientes',{method:'POST',json:row});
+      adm.clientes=await api('/rest/v1/loja_clientes?select=*&order=nome.asc');adm.cedit=null;toast('Cliente salvo! ✅');aClientes()}
+    catch(e){toast(e.message);$('#cs').disabled=false;$('#cs').textContent='Salvar cliente'}};
+}
+function npTotal(n){const f=parseFloat(String(n.frete||'0').replace(',','.'))||0;return n.itens.reduce((t,i)=>t+i.preco*i.qtd,0)+(f>0?f:0)}
+function aPedidoForm(){
+  const n=adm.np;
+  const cap=()=>{if(!$('#npc'))return;n.cid=$('#npc').value;if($('#npn')){n.nome=$('#npn').value;n.tel=$('#npt').value;n.end=$('#npe').value;n.salvar=$('#nps').checked}
+    n.frete=$('#npf').value;n.obs=$('#npo').value;n.status=$('#npst').value;n.pid=$('#npp').value;n.qtd=$('#npq').value;
+    document.querySelectorAll('[data-pr]').forEach(e=>{n.itens[+e.dataset.pr].preco=parseFloat(String(e.value).replace(',','.'))||0});
+    document.querySelectorAll('[data-qt]').forEach(e=>{n.itens[+e.dataset.qt].qtd=Math.max(1,parseInt(e.value)||1)})};
+  const cli=adm.clientes.find(c=>c.id===n.cid);
+  $('#ad').innerHTML=`<div class="box"><h3>Novo pedido (manual)</h3>
+  <label for="npc">Cliente</label><select class="f" id="npc"><option value="">➕ Novo cliente…</option>${adm.clientes.map(c=>`<option value="${c.id}" ${c.id===n.cid?'selected':''}>${h(c.nome)}${c.tel?' · '+h(c.tel):''}</option>`).join('')}</select>
+  ${cli?`<div class="muted">${h(cli.tel)}${cli.endereco?' · 📍 '+h(cli.endereco):''}</div>`:`<label for="npn">Nome do cliente</label><input class="f" id="npn" value="${h(n.nome)}"><label for="npt">Telefone / WhatsApp</label><input class="f" id="npt" type="tel" value="${h(n.tel)}"><label for="npe">Endereço (opcional)</label><input class="f" id="npe" value="${h(n.end)}"><label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="nps" ${n.salvar?'checked':''}> Salvar este cliente na lista</label>`}
+  <h3 style="margin-top:16px">Itens</h3>
+  ${n.itens.map((i,k)=>`<div class="box"><b>${h(i.nome)}</b><div class="row" style="gap:8px;margin-top:6px"><div class="grow"><label>Qtd</label><input class="f" type="number" min="1" data-qt="${k}" value="${i.qtd}"></div><div class="grow"><label>Preço (R$)</label><input class="f" inputmode="decimal" data-pr="${k}" value="${String(i.preco).replace('.',',')}"></div><button class="btn small" style="background:#e53935" data-ri="${k}">🗑️</button></div></div>`).join('')||'<p class="muted">Nenhum item ainda.</p>'}
+  <div class="row" style="gap:8px"><div class="grow"><select class="f" id="npp"><option value="">Escolha o produto…</option>${prods.map(p=>`<option value="${p.id}" ${p.id===n.pid?'selected':''}>${h(p.nome)} · ${brl(p.preco)}</option>`).join('')}</select></div><div style="width:76px"><input class="f" id="npq" type="number" min="1" value="${h(n.qtd)}"></div></div>
+  <p></p><button class="btn block ghost" id="npa">+ Adicionar item</button>
+  <label for="npf">Frete (R$, opcional)</label><input class="f" id="npf" inputmode="decimal" value="${h(n.frete)}">
+  <label for="npo">Observações</label><textarea class="f" id="npo" rows="2">${h(n.obs)}</textarea>
+  <label for="npst">Situação</label><select class="f" id="npst">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===n.status?'selected':''}>${v[0]}</option>`).join('')}</select>
+  <p class="muted">O estoque não é conferido nem alterado: você ajusta as quantidades depois, no cadastro do produto.</p>
+  <div class="price" id="npt2">Total: ${brl(npTotal(n))}</div>
+  <p></p><button class="btn block" id="npsv">Salvar pedido</button><p></p><button class="btn block ghost" id="npx">Cancelar</button></div>`;
+  $('#npc').onchange=()=>{cap();aPedidoForm()};
+  $('#npx').onclick=()=>{adm.np=null;aPedidos()};
+  document.querySelectorAll('[data-ri]').forEach(b=>b.onclick=()=>{cap();n.itens.splice(+b.dataset.ri,1);aPedidoForm()});
+  document.querySelectorAll('[data-pr],[data-qt],#npf').forEach(e=>e.oninput=()=>{cap();$('#npt2').textContent='Total: '+brl(npTotal(n))});
+  $('#npa').onclick=()=>{cap();const p=prods.find(x=>x.id===n.pid);if(!p){toast('Escolha o produto');return}
+    const q=Math.max(1,parseInt(n.qtd)||1);const ex=n.itens.find(i=>i.id===p.id);if(ex)ex.qtd+=q;else n.itens.push({id:p.id,nome:p.nome,preco:Number(p.preco),qtd:q,imagem:(p.imagens&&p.imagens[0])||''});
+    n.pid='';n.qtd='1';aPedidoForm()};
+  $('#npsv').onclick=async()=>{cap();
+    let nome,tel,end,cid=n.cid||null;
+    if(cli){nome=cli.nome;tel=cli.tel||'';end=cli.endereco||''}else{nome=n.nome.trim();tel=n.tel.trim();end=n.end.trim()}
+    if(!nome){toast('Informe o cliente');return}
+    if(!n.itens.length){toast('Adicione ao menos um item');return}
+    const fr=parseFloat(String(n.frete||'0').replace(',','.'))||0;
+    const itens=n.itens.map(i=>({id:i.id,nome:i.nome,preco:i.preco,qtd:i.qtd,imagem:i.imagem}));
+    if(fr>0)itens.push({id:null,nome:'Frete',preco:fr,qtd:1,imagem:''});
+    $('#npsv').disabled=true;$('#npsv').textContent='Salvando...';
+    try{
+      if(!cli&&n.salvar){const r=await api('/rest/v1/loja_clientes',{method:'POST',json:{nome,tel,endereco:end},headers:{Prefer:'return=representation'}});if(r&&r[0])cid=r[0].id;adm.clientes=await api('/rest/v1/loja_clientes?select=*&order=nome.asc')}
+      const codigo=Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
+      await api('/rest/v1/loja_pedidos',{method:'POST',json:{codigo,cliente_nome:nome,cliente_tel:tel||'-',endereco:end,obs:n.obs.trim(),itens,total:npTotal(n),status:n.status,cliente_id:cid,origem:'manual'}});
+      adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc');adm.np=null;toast('Pedido salvo! ✅');drawAdmin();
+    }catch(e){toast(e.message);$('#npsv').disabled=false;$('#npsv').textContent='Salvar pedido'}};
 }
 function aProdutos(){
   if(adm.edit){return aForm()}
