@@ -597,13 +597,13 @@ function drawAdmin(){
   ({pedidos:aPedidos,clientes:aClientes,produtos:aProdutos,frete:aFrete,config:aConfig})[adm.tab]();
 }
 const R2=x=>Math.round(x*100)/100;
-function lucroDe(p){const its=(p.itens||[]).filter(i=>i.id);const rec=its.reduce((t,i)=>t+i.preco*i.qtd,0);
+function lucroDe(p){const its=(p.itens||[]).filter(i=>i.id);const dsc=(p.itens||[]).filter(i=>!i.id&&/^desconto/i.test(String(i.nome))).reduce((t,i)=>t+i.preco*i.qtd,0);const rec=its.reduce((t,i)=>t+i.preco*i.qtd,0)+dsc;
   if(p.lucro!=null&&p.custo_total!=null)return{rec,custo:Number(p.custo_total),lucro:Number(p.lucro),ok:true,snap:true};
   let ok=its.length>0,custo=0;its.forEach(i=>{const c=adm.custos[i.id];if(c>0)custo+=c*i.qtd;else ok=false});
   return{rec,custo,lucro:rec-custo,ok,snap:false}}
 function snapItens(itens){const its=(itens||[]).filter(i=>i.id);if(!its.length)return{};let custo=0;
   for(const i of its){const c=adm.custos[i.id];if(!(c>0))return{};custo+=c*i.qtd}
-  const rec=its.reduce((t,i)=>t+i.preco*i.qtd,0);return{custo_total:R2(custo),lucro:R2(rec-custo)}}
+  const dsc=(itens||[]).filter(i=>!i.id&&/^desconto/i.test(String(i.nome))).reduce((t,i)=>t+i.preco*i.qtd,0);const rec=its.reduce((t,i)=>t+i.preco*i.qtd,0)+dsc;return{custo_total:R2(custo),lucro:R2(rec-custo)}}
 async function patchPed(id,json){
   try{await api('/rest/v1/loja_pedidos?id=eq.'+id,{method:'PATCH',json})}
   catch(e){if(/column|schema cache/i.test(e.message)){const j={...json};delete j.lucro;delete j.custo_total;delete j.arquivado;
@@ -649,9 +649,9 @@ function aPedidos(){
   document.querySelectorAll('[data-ar]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.ar);if(!p)return;try{await patchPed(p.id,{arquivado:!p.arquivado});p.arquivado=!p.arquivado;toast(p.arquivado?'Pedido arquivado 📁':'Pedido voltou para a lista');aPedidos()}catch(e){toast(e.message)}});
   if($('#arall'))$('#arall').onclick=async()=>{if(!confirm('Arquivar '+conc.length+' pedido(s) já entregues ou cancelados? Eles continuam salvos na aba Arquivados.'))return;try{for(const p of conc){await patchPed(p.id,{arquivado:true});p.arquivado=true}toast('Pedidos arquivados 📁')}catch(e){toast(e.message)}aPedidos()};
   document.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.ed);if(!p)return;
-    const fi=p.itens.find(i=>!i.id&&/^frete/i.test(String(i.nome)));
+    const fi=p.itens.find(i=>!i.id&&/^frete/i.test(String(i.nome)));const di=p.itens.find(i=>!i.id&&/^desconto/i.test(String(i.nome)));
     adm.np={edit:p.id,codigo:p.codigo,cid:p.cliente_id||'',nome:p.cliente_nome||'',tel:p.cliente_tel==='-'?'':(p.cliente_tel||''),end:p.endereco||'',salvar:false,tipo:/^\[ATACADO\]/.test(p.obs||'')?'atacado':'varejo',
-      itens:p.itens.filter(i=>i!==fi).map(i=>({id:i.id,nome:i.nome,preco:Number(i.preco),qtd:i.qtd,imagem:i.imagem||''})),frete:fi?String(fi.preco).replace('.',','):'',obs:(p.obs||'').replace(/^\[ATACADO\]\s*/,''),status:p.status,pid:'',qtd:'1'};
+      itens:p.itens.filter(i=>i!==fi&&i!==di).map(i=>({id:i.id,nome:i.nome,preco:Number(i.preco),qtd:i.qtd,imagem:i.imagem||''})),frete:fi?String(fi.preco).replace('.',','):'',desc:di?String(Math.abs(di.preco)).replace('.',','):'',dtipo:'rs',obs:(p.obs||'').replace(/^\[ATACADO\]\s*/,''),status:p.status,pid:'',qtd:'1'};
     aPedidos();window.scrollTo(0,0)});
   $('#npd').onclick=()=>{adm.np={cid:'',nome:'',tel:'',end:'',salvar:true,tipo:'varejo',itens:[],frete:'',obs:'',status:'aguardando_pagamento',pid:'',qtd:'1'};aPedidos()};
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.del);if(!p||!confirm('Excluir o pedido '+p.codigo+' de '+p.cliente_nome+'? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_pedidos?id=eq.'+p.id,{method:'DELETE'});adm.pedidos=adm.pedidos.filter(x=>x.id!==p.id);toast('Pedido excluído');drawAdmin()}catch(e){toast(e.message)}});
@@ -687,11 +687,12 @@ function aClienteForm(){
     catch(e){toast(e.message);$('#cs').disabled=false;$('#cs').textContent='Salvar cliente'}};
 }
 function precoDe(p,tipo){const a=Number(p.preco_atacado);return tipo==='atacado'&&p.preco_atacado!=null&&a>0?a:Number(p.preco)}
-function npTotal(n){const f=parseFloat(String(n.frete||'0').replace(',','.'))||0;return n.itens.reduce((t,i)=>t+i.preco*i.qtd,0)+(f>0?f:0)}
+function npDesc(n){const sub=n.itens.reduce((t,i)=>t+i.preco*i.qtd,0);const v=parseFloat(String(n.desc||'0').replace(',','.'))||0;if(v<=0)return 0;return Math.min(sub,R2(n.dtipo==='pct'?sub*Math.min(v,100)/100:v))}
+function npTotal(n){const f=parseFloat(String(n.frete||'0').replace(',','.'))||0;return R2(n.itens.reduce((t,i)=>t+i.preco*i.qtd,0)+(f>0?f:0)-npDesc(n))}
 function aPedidoForm(){
   const n=adm.np;
   const cap=()=>{if(!$('#npst'))return;if($('#npc')&&!n.edit)n.cid=$('#npc').value;n.tipo=$('#nptp').value;if($('#npn')){n.nome=$('#npn').value;n.tel=$('#npt').value;n.end=$('#npe').value;if($('#nps'))n.salvar=$('#nps').checked}
-    n.frete=$('#npf').value;n.obs=$('#npo').value;n.status=$('#npst').value;n.pid=$('#npp').value;n.qtd=$('#npq').value;
+    n.frete=$('#npf').value;n.desc=$('#npd1').value;n.dtipo=$('#npd2').value;n.obs=$('#npo').value;n.status=$('#npst').value;n.pid=$('#npp').value;n.qtd=$('#npq').value;
     document.querySelectorAll('[data-pr]').forEach(e=>{n.itens[+e.dataset.pr].preco=parseFloat(String(e.value).replace(',','.'))||0});
     document.querySelectorAll('[data-qt]').forEach(e=>{n.itens[+e.dataset.qt].qtd=Math.max(1,parseInt(e.value)||1)})};
   const cli=n.edit?null:adm.clientes.find(c=>c.id===n.cid);
@@ -703,6 +704,7 @@ function aPedidoForm(){
   ${n.itens.map((i,k)=>`<div class="box"><b>${h(i.nome)}</b><div class="row" style="gap:8px;margin-top:6px"><div class="grow"><label>Qtd</label><input class="f" type="number" min="1" data-qt="${k}" value="${i.qtd}"></div><div class="grow"><label>Preço (R$)</label><input class="f" inputmode="decimal" data-pr="${k}" value="${String(i.preco).replace('.',',')}"></div><button class="btn small" style="background:#e53935" data-ri="${k}">🗑️</button></div></div>`).join('')||'<p class="muted">Nenhum item ainda.</p>'}
   <div class="row" style="gap:8px"><div class="grow"><select class="f" id="npp"><option value="">Escolha o produto…</option>${prods.map(p=>`<option value="${p.id}" ${p.id===n.pid?'selected':''}>${h(p.nome)} · ${brl(precoDe(p,n.tipo))}</option>`).join('')}</select></div><div style="width:76px"><input class="f" id="npq" type="number" min="1" value="${h(n.qtd)}"></div></div>
   <p></p><button class="btn block ghost" id="npa">+ Adicionar item</button>
+  <label>Desconto (opcional)</label><div class="row" style="gap:8px"><div class="grow"><input class="f" id="npd1" inputmode="decimal" placeholder="Ex.: 10" value="${h(n.desc||'')}"></div><div style="width:110px"><select class="f" id="npd2"><option value="rs" ${n.dtipo!=='pct'?'selected':''}>R$</option><option value="pct" ${n.dtipo==='pct'?'selected':''}>%</option></select></div></div>${npDesc(n)>0?`<div class="muted" id="npdl">Desconto aplicado: −${brl(npDesc(n))}</div>`:'<div id="npdl"></div>'}
   <label for="npf">Frete (R$, opcional)</label><input class="f" id="npf" inputmode="decimal" value="${h(n.frete)}">
   <label for="npo">Observações</label><textarea class="f" id="npo" rows="2">${h(n.obs)}</textarea>
   <label for="npst">Situação</label><select class="f" id="npst">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===n.status?'selected':''}>${v[0]}</option>`).join('')}</select>
@@ -713,7 +715,7 @@ function aPedidoForm(){
   $('#nptp').onchange=()=>{cap();n.itens.forEach(i=>{const p=prods.find(x=>x.id===i.id);if(p)i.preco=precoDe(p,n.tipo)});aPedidoForm()};
   $('#npx').onclick=()=>{adm.np=null;aPedidos()};
   document.querySelectorAll('[data-ri]').forEach(b=>b.onclick=()=>{cap();n.itens.splice(+b.dataset.ri,1);aPedidoForm()});
-  document.querySelectorAll('[data-pr],[data-qt],#npf').forEach(e=>e.oninput=()=>{cap();$('#npt2').textContent='Total: '+brl(npTotal(n))});
+  document.querySelectorAll('[data-pr],[data-qt],#npf,#npd1').forEach(e=>e.oninput=()=>{cap();$('#npt2').textContent='Total: '+brl(npTotal(n));$('#npdl').textContent=npDesc(n)>0?'Desconto aplicado: −'+brl(npDesc(n)):''});$('#npd2').onchange=()=>{cap();$('#npt2').textContent='Total: '+brl(npTotal(n));$('#npdl').textContent=npDesc(n)>0?'Desconto aplicado: −'+brl(npDesc(n)):''};
   $('#npa').onclick=()=>{cap();const p=prods.find(x=>x.id===n.pid);if(!p){toast('Escolha o produto');return}
     const q=Math.max(1,parseInt(n.qtd)||1);const ex=n.itens.find(i=>i.id===p.id);if(ex)ex.qtd+=q;else n.itens.push({id:p.id,nome:p.nome,preco:precoDe(p,n.tipo),qtd:q,imagem:(p.imagens&&p.imagens[0])||''});
     n.pid='';n.qtd='1';aPedidoForm()};
@@ -724,6 +726,7 @@ function aPedidoForm(){
     if(!n.itens.length){toast('Adicione ao menos um item');return}
     const fr=parseFloat(String(n.frete||'0').replace(',','.'))||0;
     const itens=n.itens.map(i=>({id:i.id,nome:i.nome,preco:i.preco,qtd:i.qtd,imagem:i.imagem}));
+    if(npDesc(n)>0)itens.push({id:null,nome:'Desconto',preco:-npDesc(n),qtd:1,imagem:''});
     if(fr>0)itens.push({id:null,nome:'Frete',preco:fr,qtd:1,imagem:''});
     $('#npsv').disabled=true;$('#npsv').textContent='Salvando...';
     try{
