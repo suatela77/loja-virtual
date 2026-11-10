@@ -620,8 +620,10 @@ function resumoHtml(){const now=new Date();const f=p=>{const d=new Date(p.create
   l.forEach(p=>{const L=lucroDe(p);if(L.ok){rec+=L.rec;custo+=L.custo;lu+=L.lucro}else inc++});
   const chip=(k,t)=>`<button class="chip ${adm.per===k?'on':''}" data-per="${k}">${t}</button>`;
   return `<div class="box" style="background:#f5f0ff"><b>💰 Resumo de vendas</b><div style="margin:8px 0">${chip('mes','Este mês')}${chip('ant','Mês passado')}${chip('tudo','Tudo')}</div>
-  <div>Vendas pagas/entregues: <b>${l.length}</b></div><div>Receita (sem frete): <b>${brl(rec)}</b> · Compra: ${brl(custo)}</div>
-  <div class="price" style="font-size:24px">Lucro: ${brl(lu)}${custo>0?` <span style="font-size:15px">(${fmtp(pct(rec,custo))})</span>`:''}</div>${inc?`<div class="muted">${inc} venda(s) fora da conta: falta o valor de compra de algum item.</div>`:''}</div>`}
+  <div>Vendas pagas/entregues: <b>${l.length}</b></div>
+  <div>💵 Receita: <b>${brl(rec)}</b></div><div>🧾 Despesa (compra): <b>${brl(custo)}</b></div>
+  <div class="price" style="font-size:24px">Lucro: ${brl(lu)}${custo>0?` <span style="font-size:15px">(${fmtp(pct(rec,custo))})</span>`:''}</div>${inc?`<div class="muted">${inc} venda(s) fora da conta: falta o valor de compra de algum item.</div>`:''}
+  <details style="margin-top:8px"><summary><b>Ver extrato de cada venda</b></summary>${l.length?l.map(p=>{const L=lucroDe(p);return `<div style="border-top:1px dashed #cbb;padding:8px 0"><b>${h(p.cliente_nome)}</b> <span class="muted">· ${new Date(p.created_at).toLocaleDateString('pt-BR')} · ${p.codigo}</span><div>💵 Receita: ${brl(L.rec)}</div>${L.ok?`<div>🧾 Despesa: ${brl(L.custo)}</div><div style="color:#166534"><b>💰 Lucro: ${brl(L.lucro)}</b> (${fmtp(pct(L.rec,L.custo))})</div>`:'<div class="muted">Falta valor de compra</div>'}</div>`}).join(''):'<div class="muted">Nenhuma venda no período.</div>'}</details></div>`}
 function aPedidos(){
   if(adm.np)return aPedidoForm();
   const card=p=>{const st=STATUS[p.status]||[p.status,'#999'];const at=/^\[ATACADO\]/.test(p.obs||'');const ob=(p.obs||'').replace(/^\[ATACADO\]\s*/,'');
