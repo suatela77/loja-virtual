@@ -519,8 +519,10 @@ function vCarrinho(){
   $('#fin').onclick=finalizar;
   $('#cupb').onclick=async()=>{const c=$('#cup').value.trim().toUpperCase();if(!c){cup=null;$('#tcp').innerHTML='';freteUI();$('#tt').textContent=brl(cartTotal()+freteVal());$('#cupm').textContent='';return}
     $('#cupb').disabled=true;try{const r=await rpc('loja_checar_cupom',{p_codigo:c,p_subtotal:cartTotal()});
-      if(r&&r.ok){cup={codigo:c,desconto:Number(r.desconto)};$('#tcp').innerHTML=`<div class="row"><span class="grow">Cupom ${h(c)}</span><b style="color:#16a34a">−${brl(cupVal())}</b></div>`;$('#cupm').textContent='🎉 Cupom aplicado!'}
-      else{cup=null;$('#tcp').innerHTML='';$('#cupm').textContent=(r&&r.msg)||'Cupom inválido'}freteUI();$('#tt').textContent=brl(Math.max(0,cartTotal()+freteVal()-cupVal()))}catch(e){$('#cupm').textContent='Não consegui conferir o cupom agora.'}$('#cupb').disabled=false};
+      if(r&&r.ok){cup={codigo:c,desconto:Number(r.desconto)};$('#tcp').innerHTML=`<div class="row"><span class="grow">Cupom ${h(c)}</span><b style="color:#16a34a">−${brl(cupVal())}</b></div>`;$('#cupm').innerHTML='<b style="color:#16a34a">🎉 Cupom aplicado!</b>'}
+      else{cup=null;$('#tcp').innerHTML='';const msg=(r&&r.msg)||'Cupom inválido';const mm=/mínima de R\$\s*([\d.,]+)/.exec(msg);
+        if(mm){const min=parseFloat(mm[1]);const falta=Math.max(0,min-cartTotal());$('#cupm').innerHTML=`<div style="background:#fff1f2;border:2px solid #fb7185;border-radius:14px;padding:12px 14px;color:#9f1239"><div style="font-weight:900;font-size:16px">⚠️ Compra mínima de ${brl(min)} para este cupom</div><div style="font-weight:700;margin-top:4px">Faltam ${brl(falta)} para você usar o cupom ${h(c)}.</div><a class="btn green block" href="#/" style="margin-top:10px">🛍️ Continuar comprando</a></div>`}
+        else $('#cupm').innerHTML=`<div style="background:#fff1f2;border:2px solid #fb7185;border-radius:14px;padding:10px 14px;color:#9f1239;font-weight:800">⚠️ ${h(msg)}</div>`}freteUI();$('#tt').textContent=brl(Math.max(0,cartTotal()+freteVal()-cupVal()))}catch(e){$('#cupm').textContent='Não consegui conferir o cupom agora.'}$('#cupb').disabled=false};
   if(freteOn()){document.querySelectorAll('[name=ftipo]').forEach(r=>r.onchange=()=>{if(r.checked&&r.value==='retirada'){fr={tipo:'retirada',km:0,valor:0,desc:'Retirada na loja'};$('#fbox').style.display='none'}else if(r.checked){fr=null;$('#fbox').style.display=''}freteUI()});$('#fcalc').onclick=calcFrete;freteUI()}
 }
 async function finalizar(){
