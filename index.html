@@ -351,6 +351,8 @@ function lightbox(imgs,i){
 
 /* ---------- frete por distancia ---------- */
 let fr=null; // {tipo:'entrega'|'retirada',km,valor,desc}
+let cup=null; // {codigo,desconto}
+const cupVal=()=>cup?Math.min(cup.desconto,cartTotal()):0;
 const freteOn=()=>!!cfg.frete_ativo&&Number(cfg.frete_km)>0;
 const freteVal=()=>fr?Number(fr.valor)||0:0;
 let BIAS=null;
@@ -468,7 +470,7 @@ function freteUI(){
   if(fr&&fr.tipo==='retirada')el.innerHTML='🏬 <b>Retirada na loja</b> — sem frete.';
   else if(fr)el.innerHTML=`🚚 Distância: <b>${String(fr.km).replace('.',',')} km</b>${cfg.frete_volta?' (ida e volta)':''}<br>Frete: <b>${brl(fr.valor)}</b>${fr.aprox?'<br><span class="muted">Valor aproximado (endereço localizado pela região).</span>':''}`;
   else el.innerHTML='';
-  const t=$('#tt');if(t)t.textContent=brl(cartTotal()+freteVal());
+  const t=$('#tt');if(t)t.textContent=brl(Math.max(0,cartTotal()+freteVal()-cupVal()));
   const l=$('#tfr');if(l)l.innerHTML=fr?`<div class="row"><span class="grow">${fr.tipo==='retirada'?'Retirada':'Frete'}</span><b>${fr.tipo==='retirada'?'Grátis':brl(fr.valor)}</b></div>`:''}
 function vCarrinho(){
   cart=cart.filter(i=>prod(i.id));saveCart();
@@ -476,7 +478,8 @@ function vCarrinho(){
   const me=ls.get('loja_cli',{});
   $('#app').innerHTML=`<div class="wrap"><h2 style="margin:16px 0">Seu carrinho 🛒</h2>
   <div class="box">${cart.map(i=>{const p=prod(i.id);return `<div class="row" style="margin:10px 0"><div class="th">${foto(p)?`<img src="${h(foto(p))}" alt="">`:'🎁'}</div><div class="grow"><b>${h(p.nome)}</b><div class="price" style="font-size:18px">${brl(p.preco*i.qtd)}</div></div><div class="qty"><button data-m="${p.id}">−</button><b>${i.qtd}</b><button data-p="${p.id}">+</button></div></div>`}).join('')}
-  <hr style="border:0;border-top:2px dashed #eadcff"><div id="tfr"></div><div class="row"><b class="grow">Total</b><span class="price" style="font-size:28px" id="tt">${brl(cartTotal()+freteVal())}</span></div></div>
+  <hr style="border:0;border-top:2px dashed #eadcff"><div id="tfr"></div><div id="tcp">${cup?`<div class="row"><span class="grow">Cupom ${h(cup.codigo)}</span><b style="color:#16a34a">−${brl(cupVal())}</b></div>`:''}</div><div class="row"><b class="grow">Total</b><span class="price" style="font-size:28px" id="tt">${brl(Math.max(0,cartTotal()+freteVal()-cupVal()))}</span></div></div>
+  <div class="box"><h3>Cupom de desconto 🎟️</h3><div class="row" style="gap:8px"><input class="f grow" id="cup" placeholder="Digite seu cupom" autocapitalize="characters" value="${cup?h(cup.codigo):''}"><button class="btn violet" id="cupb" style="flex:none">Aplicar</button></div><p class="muted" id="cupm"></p></div>
   ${freteOn()?`<div class="box"><h3>Entrega 🚚</h3>
   <label><input type="radio" name="ftipo" value="entrega" ${!fr||fr.tipo!=='retirada'?'checked':''}> Entregar no meu endereço</label>
   <label><input type="radio" name="ftipo" value="retirada" ${fr&&fr.tipo==='retirada'?'checked':''}> Retirar na loja (sem frete)</label>
@@ -492,9 +495,13 @@ function vCarrinho(){
   <label for="co">Observação (opcional)</label><input class="f" id="co">
   <p class="muted">Você finaliza pelo WhatsApp e combina o pagamento direto com a loja. 💬</p></div>
   <button class="btn green block" id="fin">Finalizar pelo WhatsApp 💬</button><p style="height:30px"></p></div>`;
-  document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const i=cart.find(x=>x.id===b.dataset.m);i.qtd--;if(i.qtd<1)cart=cart.filter(x=>x!==i);saveCart();vCarrinho()});
-  document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{cart.find(x=>x.id===b.dataset.p).qtd++;saveCart();vCarrinho()});
+  document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const i=cart.find(x=>x.id===b.dataset.m);i.qtd--;if(i.qtd<1)cart=cart.filter(x=>x!==i);cup=null;saveCart();vCarrinho()});
+  document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{cart.find(x=>x.id===b.dataset.p).qtd++;cup=null;saveCart();vCarrinho()});
   $('#fin').onclick=finalizar;
+  $('#cupb').onclick=async()=>{const c=$('#cup').value.trim().toUpperCase();if(!c){cup=null;$('#tcp').innerHTML='';freteUI();$('#tt').textContent=brl(cartTotal()+freteVal());$('#cupm').textContent='';return}
+    $('#cupb').disabled=true;try{const r=await rpc('loja_checar_cupom',{p_codigo:c,p_subtotal:cartTotal()});
+      if(r&&r.ok){cup={codigo:c,desconto:Number(r.desconto)};$('#tcp').innerHTML=`<div class="row"><span class="grow">Cupom ${h(c)}</span><b style="color:#16a34a">−${brl(cupVal())}</b></div>`;$('#cupm').textContent='🎉 Cupom aplicado!'}
+      else{cup=null;$('#tcp').innerHTML='';$('#cupm').textContent=(r&&r.msg)||'Cupom inválido'}freteUI();$('#tt').textContent=brl(Math.max(0,cartTotal()+freteVal()-cupVal()))}catch(e){$('#cupm').textContent='Não consegui conferir o cupom agora.'}$('#cupb').disabled=false};
   if(freteOn()){document.querySelectorAll('[name=ftipo]').forEach(r=>r.onchange=()=>{if(r.checked&&r.value==='retirada'){fr={tipo:'retirada',km:0,valor:0,desc:'Retirada na loja'};$('#fbox').style.display='none'}else if(r.checked){fr=null;$('#fbox').style.display=''}freteUI()});$('#fcalc').onclick=calcFrete;freteUI()}
 }
 async function finalizar(){
@@ -505,10 +512,10 @@ async function finalizar(){
   const b=$('#fin');b.disabled=true;b.textContent='Enviando...';
   ls.set('loja_cli',{nome,tel,end:$('#ce').value});
   try{
-    const r=await rpc('loja_criar_pedido',{p_nome:nome,p_tel:tel,p_email:'',p_end:$('#ce').value,p_obs:$('#co').value,p_itens:cart,...(fr&&fr.valor>0?{p_frete:fr.valor,p_frete_desc:fr.desc}:{})});
+    const r=await rpc('loja_criar_pedido',{p_nome:nome,p_tel:tel,p_email:'',p_end:$('#ce').value,p_obs:$('#co').value,p_itens:cart,...(cup?{p_cupom:cup.codigo}:{}),...(fr&&fr.valor>0?{p_frete:fr.valor,p_frete_desc:fr.desc}:{})});
     const linhas=cart.map(i=>{const p=prod(i.id);return `• ${i.qtd}x ${p.nome} (${brl(p.preco)} cada) — ${brl(p.preco*i.qtd)}`}).join('\n');
-    const txt=`Olá! Fiz um pedido na ${cfg.nome} 🛍️\n\nPedido: ${r.codigo}\n${linhas}${fr?'\n• '+(fr.tipo==='retirada'?'Retirada na loja — sem frete':fr.desc+' — '+brl(fr.valor)):''}\n\nTotal: ${brl(r.total)}\nNome: ${nome}${$('#ce').value?'\nEndereço: '+$('#ce').value:''}${$('#co').value?'\nObs: '+$('#co').value:''}\n\nAcompanhar: ${location.origin}/#/pedido/${r.codigo}`;
-    cart=[];fr=null;saveCart();
+    const txt=`Olá! Fiz um pedido na ${cfg.nome} 🛍️\n\nPedido: ${r.codigo}\n${linhas}${cup?'\n• Cupom '+cup.codigo+' — −'+brl(cupVal()):''}${fr?'\n• '+(fr.tipo==='retirada'?'Retirada na loja — sem frete':fr.desc+' — '+brl(fr.valor)):''}\n\nTotal: ${brl(r.total)}\nNome: ${nome}${$('#ce').value?'\nEndereço: '+$('#ce').value:''}${$('#co').value?'\nObs: '+$('#co').value:''}\n\nAcompanhar: ${location.origin}/#/pedido/${r.codigo}`;
+    cart=[];fr=null;cup=null;saveCart();
     ls.set('loja_ult',r.codigo);
     location.hash='#/pedido/'+r.codigo;
     setTimeout(()=>{location.href=waLink(txt)},400);
@@ -565,7 +572,7 @@ async function vRecibo(cod){
 }
 
 /* ---------- administração ---------- */
-let adm={tab:'pedidos',pedidos:[],clientes:[],custos:{},pv:'ativos',per:'mes',edit:null,files:[],np:null,cedit:null,cq:''};
+let adm={tab:'pedidos',pedidos:[],clientes:[],custos:{},pv:'ativos',per:'mes',cupons:[],edit:null,files:[],np:null,cedit:null,cq:''};
 async function vAdmin(){
   if(!sess){
     $('#app').innerHTML=`<div class="wrap"><h2 style="margin:16px 0">Área da loja 🔐</h2><div class="box">
@@ -577,6 +584,7 @@ async function vAdmin(){
   if(!ok){$('#app').innerHTML=`<div class="wrap empty"><div class="big">🚫</div><h2>Esta conta não é da loja</h2><button class="btn" id="so">Sair</button></div>`;$('#so').onclick=sair;return}
   adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc').catch(()=>[]);
   adm.clientes=await api('/rest/v1/loja_clientes?select=*&order=nome.asc').catch(()=>[]);
+  adm.cupons=await api('/rest/v1/loja_cupons?select=*&order=created_at.desc').catch(()=>null);
   await loadCustos();snapPend();
   prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc').catch(()=>prods);prods.sort(ABC);
   drawAdmin();
@@ -588,13 +596,14 @@ function drawAdmin(){
   <button class="chip ${adm.tab==='pedidos'?'on':''}" data-t="pedidos">📦 Pedidos${pend?` (${pend})`:''}</button>
   <button class="chip ${adm.tab==='clientes'?'on':''}" data-t="clientes">👥 Clientes</button>
   <button class="chip ${adm.tab==='produtos'?'on':''}" data-t="produtos">🛍️ Produtos</button>
+  <button class="chip ${adm.tab==='cupons'?'on':''}" data-t="cupons">🎟️ Cupons</button>
   <button class="chip ${adm.tab==='frete'?'on':''}" data-t="frete">🚚 Frete</button>
   <button class="chip ${adm.tab==='config'?'on':''}" data-t="config">⚙️ Loja</button>
   <button class="chip" id="so">Sair</button></div>
   <div class="stats"><div class="stat"><b>${pend}</b>pedidos novos</div><div class="stat"><b>${adm.pedidos.length}</b>pedidos</div><div class="stat"><b>${prods.length}</b>produtos</div></div><div id="ad"></div></div>`;
   document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{adm.tab=b.dataset.t;adm.edit=null;adm.np=null;adm.cedit=null;drawAdmin()});
   $('#so').onclick=sair;
-  ({pedidos:aPedidos,clientes:aClientes,produtos:aProdutos,frete:aFrete,config:aConfig})[adm.tab]();
+  ({pedidos:aPedidos,clientes:aClientes,produtos:aProdutos,cupons:aCupons,frete:aFrete,config:aConfig})[adm.tab]();
 }
 const R2=x=>Math.round(x*100)/100;
 function lucroDe(p){const its=(p.itens||[]).filter(i=>i.id);const dsc=(p.itens||[]).filter(i=>!i.id&&/^desconto/i.test(String(i.nome))).reduce((t,i)=>t+i.preco*i.qtd,0);const rec=its.reduce((t,i)=>t+i.preco*i.qtd,0)+dsc;
@@ -606,7 +615,7 @@ function snapItens(itens){const its=(itens||[]).filter(i=>i.id);if(!its.length)r
   const dsc=(itens||[]).filter(i=>!i.id&&/^desconto/i.test(String(i.nome))).reduce((t,i)=>t+i.preco*i.qtd,0);const rec=its.reduce((t,i)=>t+i.preco*i.qtd,0)+dsc;return{custo_total:R2(custo),lucro:R2(rec-custo)}}
 async function patchPed(id,json){
   try{await api('/rest/v1/loja_pedidos?id=eq.'+id,{method:'PATCH',json})}
-  catch(e){if(/column|schema cache/i.test(e.message)){const j={...json};delete j.lucro;delete j.custo_total;delete j.arquivado;
+  catch(e){if(/column|schema cache/i.test(e.message)){const j={...json};delete j.lucro;delete j.custo_total;delete j.arquivado;delete j.pago_valor;
       if(Object.keys(j).length)return api('/rest/v1/loja_pedidos?id=eq.'+id,{method:'PATCH',json:j});
       throw new Error('Falta rodar o comando novo no Supabase (colunas de arquivo e lucro).')}
     throw e}}
@@ -621,9 +630,25 @@ function resumoHtml(){const now=new Date();const f=p=>{const d=new Date(p.create
   const chip=(k,t)=>`<button class="chip ${adm.per===k?'on':''}" data-per="${k}">${t}</button>`;
   return `<div class="box" style="background:#f5f0ff"><b>💰 Resumo de vendas</b><div style="margin:8px 0">${chip('mes','Este mês')}${chip('ant','Mês passado')}${chip('tudo','Tudo')}</div>
   <div>Vendas pagas/entregues: <b>${l.length}</b></div>
+  <div style="margin:4px 0">⏳ A receber (todos os pedidos): <b>${brl(adm.pedidos.reduce((t,p)=>t+aReceber(p),0))}</b> <span class="muted">(${adm.pedidos.filter(p=>aReceber(p)>0).length} pedido(s))</span></div>
   <div>💵 Receita: <b>${brl(rec)}</b></div><div>🧾 Despesa (compra): <b>${brl(custo)}</b></div>
   <div class="price" style="font-size:24px">Lucro: ${brl(lu)}${custo>0?` <span style="font-size:15px">(${fmtp(pct(rec,custo))})</span>`:''}</div>${inc?`<div class="muted">${inc} venda(s) fora da conta: falta o valor de compra de algum item.</div>`:''}
-  <details style="margin-top:8px"><summary><b>Ver extrato de cada venda</b></summary>${l.length?l.map(p=>{const L=lucroDe(p);return `<div style="border-top:1px dashed #cbb;padding:8px 0"><b>${h(p.cliente_nome)}</b> <span class="muted">· ${new Date(p.created_at).toLocaleDateString('pt-BR')} · ${p.codigo}</span><div>💵 Receita: ${brl(L.rec)}</div>${L.ok?`<div>🧾 Despesa: ${brl(L.custo)}</div><div style="color:#166534"><b>💰 Lucro: ${brl(L.lucro)}</b> (${fmtp(pct(L.rec,L.custo))})</div>`:'<div class="muted">Falta valor de compra</div>'}</div>`}).join(''):'<div class="muted">Nenhuma venda no período.</div>'}</details></div>`}
+  ${rankHtml(l)}<details style="margin-top:8px"><summary><b>Ver extrato de cada venda</b></summary>${l.length?l.map(p=>{const L=lucroDe(p);return `<div style="border-top:1px dashed #cbb;padding:8px 0"><b>${h(p.cliente_nome)}</b> <span class="muted">· ${new Date(p.created_at).toLocaleDateString('pt-BR')} · ${p.codigo}</span><div>💵 Receita: ${brl(L.rec)}</div>${L.ok?`<div>🧾 Despesa: ${brl(L.custo)}</div><div style="color:#166534"><b>💰 Lucro: ${brl(L.lucro)}</b> (${fmtp(pct(L.rec,L.custo))})</div>`:'<div class="muted">Falta valor de compra</div>'}</div>`}).join(''):'<div class="muted">Nenhuma venda no período.</div>'}</details></div>`}
+function aReceber(p){if(p.status==='cancelado')return 0;const t=Number(p.total)||0;const pg=p.pago_valor;
+  if(pg==null&&(p.status==='pago'||p.status==='enviado'))return 0;return Math.max(0,R2(t-(Number(pg)||0)))}
+function recLinha(p){if(p.pago_valor==null)return '';const f=aReceber(p);
+  return `<div class="lucro" style="background:#fff7e6;color:#92400e">💵 Pago ${brl(Number(p.pago_valor)||0)} · ${f>0?`<b>Falta ${brl(f)}</b>`:'<b>Quitado ✅</b>'}</div>`}
+function estoqueBaixoHtml(){const l=prods.filter(p=>p.ativo&&p.estoque!=null&&p.estoque<=3).sort((a,b)=>a.estoque-b.estoque);
+  if(!l.length)return '';return `<div class="box" style="background:#fff1f2"><b>⚠️ Estoque baixo</b>${l.map(p=>`<div>${p.estoque===0?'🔴 ESGOTADO':'🟠 '+p.estoque+' restante(s)'} · ${h(p.nome)}</div>`).join('')}</div>`}
+function rankHtml(l){const m={};l.forEach(p=>(p.itens||[]).filter(i=>i.id).forEach(i=>{const r=m[i.id]||(m[i.id]={nome:i.nome,q:0,rec:0,custo:0,ok:true});r.q+=i.qtd;r.rec+=i.preco*i.qtd;const c=adm.custos[i.id];if(c>0)r.custo+=c*i.qtd;else r.ok=false}));
+  const a=Object.values(m).sort((x,y)=>y.q-x.q).slice(0,10);if(!a.length)return '';
+  return `<details style="margin-top:8px"><summary><b>🏆 Produtos mais vendidos</b></summary>${a.map((r,k)=>`<div style="border-top:1px dashed #cbb;padding:6px 0"><b>${k+1}º ${h(String(r.nome).toUpperCase())}</b><div>${r.q} un. · receita ${brl(r.rec)}${r.ok?` · <span style="color:#166534">lucro ${brl(r.rec-r.custo)}</span>`:''}</div></div>`).join('')}</details>`}
+function baixar(nome,linhas){const csv='﻿'+linhas.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(';')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download=nome;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500)}
+function backup(){const d=new Date().toISOString().slice(0,10);
+  baixar('pedidos-'+d+'.csv',[['Codigo','Data','Cliente','Telefone','Endereco','Situacao','Itens','Total','Pago','Lucro','Observacao']].concat(adm.pedidos.map(p=>[p.codigo,new Date(p.created_at).toLocaleString('pt-BR'),p.cliente_nome,p.cliente_tel,p.endereco,(STATUS[p.status]||[p.status])[0],(p.itens||[]).map(i=>i.qtd+'x '+i.nome+' ('+i.preco+')').join(' | '),String(p.total).replace('.',','),p.pago_valor==null?'':String(p.pago_valor).replace('.',','),p.lucro==null?'':String(p.lucro).replace('.',','),p.obs])));
+  setTimeout(()=>baixar('clientes-'+d+'.csv',[['Nome','Telefone','Endereco']].concat(adm.clientes.map(c=>[c.nome,c.tel,c.endereco]))),700);
+  setTimeout(()=>baixar('produtos-'+d+'.csv',[['Produto','Preco varejo','Preco atacado','Custo','Estoque','Ativo']].concat(prods.map(p=>[p.nome,String(p.preco).replace('.',','),p.preco_atacado==null?'':String(p.preco_atacado).replace('.',','),adm.custos[p.id]==null?'':String(adm.custos[p.id]).replace('.',','),p.estoque==null?'':p.estoque,p.ativo?'sim':'nao']))),1400)}
 function aPedidos(){
   if(adm.np)return aPedidoForm();
   const card=p=>{const st=STATUS[p.status]||[p.status,'#999'];const at=/^\[ATACADO\]/.test(p.obs||'');const ob=(p.obs||'').replace(/^\[ATACADO\]\s*/,'');
@@ -633,20 +658,29 @@ function aPedidos(){
   <div class="pn">${h(p.cliente_nome)}</div>
   <div class="muted">${new Date(p.created_at).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})} · 📞 ${h(p.cliente_tel)}</div>
   <ul class="pit">${p.itens.map(i=>`<li><span class="q">${i.qtd}×</span><span class="n">${h(String(i.nome).toUpperCase())}<small>${brl(i.preco)} cada</small></span><span class="v">${brl(i.preco*i.qtd)}</span></li>`).join('')}</ul>
-  <div class="ptot"><span>Total</span><b>${brl(p.total)}</b></div>${lucroLinha(p)}
+  <div class="ptot"><span>Total</span><b>${brl(p.total)}</b></div>${lucroLinha(p)}${recLinha(p)}
   ${p.endereco?`<div class="muted pad">📍 ${h(p.endereco)}</div>`:''}${ob?`<div class="muted pad">📝 ${h(ob)}</div>`:''}
   ${p.comprovante_url?`<p><a href="${h(p.comprovante_url)}" target="_blank"><img src="${h(p.comprovante_url)}" style="max-width:140px;border-radius:12px" alt="comprovante"></a></p>`:''}
   <select class="f" data-s="${p.id}">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===p.status?'selected':''}>${v[0]}</option>`).join('')}</select>
-  <div class="pbt"><button class="btn small" style="background:#f59e0b" data-ed="${p.id}">✏️ Editar</button><a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a><a class="btn small green" href="${wa}">WhatsApp</a>${p.endereco?`<a class="btn small" style="background:#33ccff;color:#05324a" target="_blank" rel="noopener" href="https://waze.com/ul?q=${encodeURIComponent(p.endereco)}&navigate=yes">🧭 Waze</a>`:''}<button class="btn small ghost" data-ar="${p.id}">${p.arquivado?'↩️ Desarquivar':'📁 Arquivar'}</button><button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button></div>
+  <div class="pbt"><button class="btn small" style="background:#f59e0b" data-ed="${p.id}">✏️ Editar</button><a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a><a class="btn small green" href="${wa}">WhatsApp</a>${p.endereco?`<a class="btn small" style="background:#33ccff;color:#05324a" target="_blank" rel="noopener" href="https://waze.com/ul?q=${encodeURIComponent(p.endereco)}&navigate=yes">🧭 Waze</a>`:''}<button class="btn small" style="background:#0d9488" data-rp="${p.id}">💵 Pagamento</button>${aReceber(p)>0?`<button class="btn small" style="background:#d97706" data-cb="${p.id}">📣 Cobrar</button>`:''}<button class="btn small ghost" data-ar="${p.id}">${p.arquivado?'↩️ Desarquivar':'📁 Arquivar'}</button><button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button></div>
   ${p.endereco?`<button class="btn block" style="margin-top:10px;background:linear-gradient(90deg,#16a34a,#22c55e)" data-eta="${p.id}">🚚 Avisar: pedido a caminho</button><div class="eta" id="eta-${p.id}"></div>`:''}</div>`};
   const arq=adm.pv==='arq';const lista=adm.pedidos.filter(p=>!!p.arquivado===arq);const nArq=adm.pedidos.filter(p=>p.arquivado).length;
   const conc=adm.pedidos.filter(p=>!p.arquivado&&(p.status==='enviado'||p.status==='cancelado'));
-  $('#ad').innerHTML=`<button class="btn block" id="npd">+ Novo pedido (manual)</button><p></p>`+resumoHtml()+`<div style="margin:12px 0"><button class="chip ${arq?'':'on'}" data-pv="ativos">Em andamento (${adm.pedidos.length-nArq})</button><button class="chip ${arq?'on':''}" data-pv="arq">📁 Arquivados (${nArq})</button></div>`
+  $('#ad').innerHTML=`<button class="btn block" id="npd">+ Novo pedido (manual)</button><p></p>`+estoqueBaixoHtml()+resumoHtml()+`<div style="margin:12px 0"><button class="chip ${arq?'':'on'}" data-pv="ativos">Em andamento (${adm.pedidos.length-nArq})</button><button class="chip ${arq?'on':''}" data-pv="arq">📁 Arquivados (${nArq})</button></div>`
    +(!arq&&conc.length?`<button class="btn block ghost" id="arall">📁 Arquivar os ${conc.length} já entregues/cancelados</button><p></p>`:'')
    +(lista.length?lista.map(card).join(''):`<div class="empty"><div class="big">${arq?'📁':'📭'}</div><h2>${arq?'Nenhum pedido arquivado':'Nenhum pedido em andamento'}</h2></div>`);
   document.querySelectorAll('[data-pv]').forEach(b=>b.onclick=()=>{adm.pv=b.dataset.pv;aPedidos()});
   document.querySelectorAll('[data-per]').forEach(b=>b.onclick=()=>{adm.per=b.dataset.per;aPedidos()});
   document.querySelectorAll('[data-ar]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.ar);if(!p)return;try{await patchPed(p.id,{arquivado:!p.arquivado});p.arquivado=!p.arquivado;toast(p.arquivado?'Pedido arquivado 📁':'Pedido voltou para a lista');aPedidos()}catch(e){toast(e.message)}});
+  document.querySelectorAll('[data-rp]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.rp);if(!p)return;const falta=aReceber(p)||Number(p.total);
+    const r=prompt('Quanto o cliente pagou AGORA? (R$)\nFalta: '+brl(falta)+'\n(digite 0 para marcar como fiado, sem pagamento ainda)',String(falta).replace('.',','));if(r===null)return;
+    const v=parseFloat(String(r).replace(',','.'));if(isNaN(v)||v<0){toast('Valor inválido');return}
+    const novo=R2((Number(p.pago_valor)||0)+v);const quit=novo>=Number(p.total)-0.005;const upd={pago_valor:novo};
+    if(quit&&(p.status==='aguardando_pagamento'||p.status==='comprovante_enviado')){upd.status='pago';Object.assign(upd,snapItens(p.itens))}
+    try{await patchPed(p.id,upd);Object.assign(p,upd);toast(quit?'Pedido quitado ✅':'Pagamento registrado 💵');aPedidos()}catch(e){toast(e.message)}});
+  document.querySelectorAll('[data-cb]').forEach(b=>b.onclick=()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.cb);if(!p)return;const f=aReceber(p);
+    const msg=`Olá, ${p.cliente_nome}! 😊 Passando para lembrar do seu pedido ${p.codigo} na ${cfg.nome}. ${f<Number(p.total)?`Falta pagar ${brl(f)} (total ${brl(p.total)}).`:`Valor: ${brl(f)}.`}${cfg.pix_chave?`\n\nPix: ${cfg.pix_chave}${cfg.pix_nome?' ('+cfg.pix_nome+')':''}`:''}\n\nSe você já pagou, me envie o comprovante, por favor! 🙏`;
+    const num='55'+String(p.cliente_tel||'').replace(/\D/g,'').replace(/^55/,'');window.open('https://wa.me/'+num+'?text='+encodeURIComponent(msg),'_blank')});
   if($('#arall'))$('#arall').onclick=async()=>{if(!confirm('Arquivar '+conc.length+' pedido(s) já entregues ou cancelados? Eles continuam salvos na aba Arquivados.'))return;try{for(const p of conc){await patchPed(p.id,{arquivado:true});p.arquivado=true}toast('Pedidos arquivados 📁')}catch(e){toast(e.message)}aPedidos()};
   document.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.ed);if(!p)return;
     const fi=p.itens.find(i=>!i.id&&/^frete/i.test(String(i.nome)));const di=p.itens.find(i=>!i.id&&/^desconto/i.test(String(i.nome)));
@@ -884,6 +918,23 @@ function aFrete(){
     }catch(e){m.textContent=e.message||'Erro ao calcular.'}
     b.disabled=false;b.textContent='Calcular'};
 }
+function aCupons(){
+  if(adm.cupons==null){$('#ad').innerHTML='<div class="box"><b>🎟️ Cupons</b><p class="muted">Falta rodar o comando novo no Supabase (o app te avisou no chat). Depois, feche e abra o painel.</p></div>';return}
+  $('#ad').innerHTML=`<div class="box"><h3>🎟️ Novo cupom</h3>
+  <label for="kc">Código (ex.: BARRO10)</label><input class="f" id="kc" autocapitalize="characters" style="text-transform:uppercase">
+  <div class="row" style="gap:8px"><div class="grow"><label for="kv">Desconto</label><input class="f" id="kv" inputmode="decimal" placeholder="10"></div><div style="width:110px"><label for="kt">Tipo</label><select class="f" id="kt"><option value="pct">%</option><option value="rs">R$</option></select></div></div>
+  <div class="row" style="gap:8px"><div class="grow"><label for="km">Compra mínima (R$)</label><input class="f" id="km" inputmode="decimal" placeholder="opcional"></div><div class="grow"><label for="ku">Limite de usos</label><input class="f" id="ku" inputmode="numeric" placeholder="opcional"></div></div>
+  <p></p><button class="btn block" id="kn">Criar cupom</button></div>`+
+  (adm.cupons.length?adm.cupons.map(c=>`<div class="box"><div class="row"><b class="grow" style="font-size:18px">${h(c.codigo)}</b><span class="tag" style="background:${c.ativo?'#16a34a':'#999'}">${c.ativo?'Ativo':'Desligado'}</span></div>
+  <div>${c.tipo==='pct'?Number(c.valor)+'%':brl(c.valor)} de desconto${c.min_compra>0?' · compra mínima '+brl(c.min_compra):''}</div><div class="muted">Usado ${c.usos} vez(es)${c.max_usos?' de '+c.max_usos:''}</div>
+  <div class="pbt"><button class="btn small ghost" data-kt="${h(c.codigo)}">${c.ativo?'Desligar':'Ligar'}</button><button class="btn small" style="background:#e53935" data-kd="${h(c.codigo)}">🗑️ Excluir</button></div></div>`).join(''):'<div class="empty"><div class="big">🎟️</div><h2>Nenhum cupom ainda</h2></div>');
+  $('#kn').onclick=async()=>{const codigo=$('#kc').value.trim().toUpperCase().replace(/\s+/g,'');const valor=parseFloat($('#kv').value.replace(',','.'));if(!codigo||!(valor>0)){toast('Informe o código e o desconto');return}
+    if($('#kt').value==='pct'&&valor>100){toast('Máximo 100%');return}
+    try{await api('/rest/v1/loja_cupons',{method:'POST',json:{codigo,tipo:$('#kt').value,valor,min_compra:parseFloat($('#km').value.replace(',','.'))||0,max_usos:parseInt($('#ku').value)||null}});
+      adm.cupons=await api('/rest/v1/loja_cupons?select=*&order=created_at.desc');toast('Cupom criado! 🎟️');aCupons()}catch(e){toast(/duplicate|unique/i.test(e.message)?'Esse código já existe':e.message)}};
+  document.querySelectorAll('[data-kt]').forEach(b=>b.onclick=async()=>{const c=adm.cupons.find(x=>x.codigo===b.dataset.kt);try{await api('/rest/v1/loja_cupons?codigo=eq.'+encodeURIComponent(c.codigo),{method:'PATCH',json:{ativo:!c.ativo}});c.ativo=!c.ativo;aCupons()}catch(e){toast(e.message)}});
+  document.querySelectorAll('[data-kd]').forEach(b=>b.onclick=async()=>{if(!confirm('Excluir o cupom '+b.dataset.kd+'?'))return;try{await api('/rest/v1/loja_cupons?codigo=eq.'+encodeURIComponent(b.dataset.kd),{method:'DELETE'});adm.cupons=adm.cupons.filter(x=>x.codigo!==b.dataset.kd);aCupons()}catch(e){toast(e.message)}});
+}
 function aConfig(){
   $('#ad').innerHTML=`<div class="box"><h3>Dados da loja</h3>
   <label for="cnm">Nome da loja</label><input class="f" id="cnm" value="${h(cfg.nome)}">
@@ -897,7 +948,9 @@ function aConfig(){
   <label for="cpx">Chave Pix</label><input class="f" id="cpx" value="${h(cfg.pix_chave)}">
   <label for="cpn">Nome do recebedor</label><input class="f" id="cpn" value="${h(cfg.pix_nome)}">
   <label for="cpi">Cidade</label><input class="f" id="cpi" value="${h(cfg.pix_cidade)}">
-  <p></p><button class="btn block" id="cs">Salvar</button></div>`;
+  <p></p><button class="btn block" id="cs">Salvar</button></div>
+  <div class="box"><h3>💾 Backup</h3><p class="muted">Baixa 3 planilhas (pedidos, clientes e produtos) para guardar no celular. Faça de vez em quando.</p><button class="btn block violet" id="bkp">Baixar backup (planilhas)</button></div>`;
+  $('#bkp').onclick=()=>{backup();toast('Baixando as planilhas… 💾')};
   $('#cs').onclick=async()=>{const n={nome:$('#cnm').value,slogan:$('#csl').value,whatsapp:$('#cwa').value,aviso:$('#cav').value,pix_chave:$('#cpx').value.trim(),pix_nome:$('#cpn').value,pix_cidade:$('#cpi').value,frete_ativo:$('#cfa').checked};
     try{await api('/rest/v1/loja_config?id=eq.1',{method:'PATCH',json:n});cfg={...cfg,...n};document.title=cfg.nome;setLogo();toast('Salvo! ✅')}catch(e){toast(e.message)}};
 }
