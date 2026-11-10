@@ -458,7 +458,7 @@ async function freteCore(cep,num,txt){
   const d=await distKm(o.pt,d0.pt);
   let km=d.km*(cfg.frete_volta?2:1);km=Math.round(km*10)/10;
   let valor=Math.max(Number(cfg.frete_min)||0,km*Number(cfg.frete_km));valor=Math.round(valor*100)/100;
-  return{tipo:'entrega',km,min:d.min,valor,end:d0.end,pt:d0.pt,desc:`Frete (${km.toString().replace('.',',')} km)`,aprox:d0.aprox||o.aprox||!d.exato}}
+  return{tipo:'entrega',km,min:d.min,valor,ori:(o.end&&o.end!=='Local escolhido')?o.end:'Localização da loja (marcada no mapa)',end:d0.end,pt:d0.pt,desc:`Frete (${km.toString().replace('.',',')} km)`,aprox:d0.aprox||o.aprox||!d.exato}}
 async function calcFrete(){
   const msg=$('#fmsg'),btn=$('#fcalc');
   btn.disabled=true;btn.textContent='Calculando...';msg.textContent='';
@@ -922,8 +922,8 @@ function aFrete(){
           b.disabled=false;b.textContent='Calcular';return}}
       const r=await freteCore($('#kcep').value,$('#knum').value,$('#kend').value);
       const km=String(r.km).replace('.',',');
-      const msg=`Olá! O frete para ${r.end||'o seu endereço'} fica ${brl(r.valor)} (${km} km${cfg.frete_volta?', ida e volta':''}). 🚚`;
-      $('#kres').innerHTML=`<div class="box" style="background:#f3ecff"><div>📍 ${h(r.end||'')}</div><div style="margin:6px 0">Distância: <b>${km} km</b>${cfg.frete_volta?' (ida e volta)':''}</div><div class="price" style="font-size:32px">${brl(r.valor)}</div>${r.aprox?'<p class="muted">Valor aproximado: o endereço foi localizado pela região. Confira antes de passar ao cliente.</p>':''}<p></p><button class="btn small violet" id="kcp">Copiar mensagem</button> <a class="btn small green" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank">Enviar no WhatsApp</a> <a class="btn small" style="background:#33ccff;color:#06324a" href="https://waze.com/ul?ll=${r.pt.lat},${r.pt.lon}&navigate=yes" target="_blank">🚗 Abrir no Waze</a></div>`;
+      const msg=`Olá! O frete de ${r.ori||'nossa loja'} para ${r.end||'o seu endereço'} fica ${brl(r.valor)} (${km} km${cfg.frete_volta?', ida e volta':''}). 🚚`;
+      $('#kres').innerHTML=`<div class="box" style="background:#f3ecff"><div style="margin-bottom:6px"><span class="muted" style="font-weight:800;font-size:12px">🏁 SAÍDA (loja)</span><div style="font-weight:700">${h(r.ori||'')}</div></div><div><span class="muted" style="font-weight:800;font-size:12px">📍 DESTINO (cliente)</span><div style="font-weight:700">${h(r.end||'')}</div></div><div style="margin:8px 0 6px">Distância: <b>${km} km</b>${cfg.frete_volta?' (ida e volta)':''}</div><div class="price" style="font-size:32px">${brl(r.valor)}</div>${r.aprox?'<p class="muted">Valor aproximado: o endereço foi localizado pela região. Confira antes de passar ao cliente.</p>':''}<p></p><button class="btn small violet" id="kcp">Copiar mensagem</button> <a class="btn small green" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank">Enviar no WhatsApp</a> <a class="btn small" style="background:#33ccff;color:#06324a" href="https://waze.com/ul?ll=${r.pt.lat},${r.pt.lon}&navigate=yes" target="_blank">🚗 Abrir no Waze</a></div>`;
       $('#kcp').onclick=async()=>{try{await navigator.clipboard.writeText(msg);toast('Mensagem copiada ✅')}catch(e){toast('Não consegui copiar')}};
     }catch(e){m.textContent=e.message||'Erro ao calcular.'}
     b.disabled=false;b.textContent='Calcular'};
