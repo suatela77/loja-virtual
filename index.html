@@ -992,6 +992,18 @@ function aConfig(){
   <p></p><button class="btn block" id="cs">Salvar</button></div>
   <div class="box"><h3>💾 Backup</h3><p class="muted">Baixa 3 planilhas (pedidos, clientes e produtos) para guardar no celular. Faça de vez em quando.</p><button class="btn block violet" id="bkp">Baixar backup (planilhas)</button></div>`;
   $('#bkp').onclick=()=>{backup();toast('Baixando as planilhas… 💾')};
+  const velhas=()=>prods.filter(p=>(p.imagens||[]).some(u=>/bmgzabkzuagegovozvlt/.test(u)));
+  if(velhas().length){$('#ad').insertAdjacentHTML('beforeend',`<div class="box"><h3>📦 Fotos antigas</h3><p class="muted"><b>${velhas().length}</b> produto(s) ainda usam fotos guardadas no projeto antigo. Toque abaixo para copiar para cá. Deixe a tela aberta até terminar.</p><button class="btn block" id="mvf">Copiar fotos para este projeto</button><p class="muted" id="mvm"></p></div>`);
+    $('#mvf').onclick=async()=>{const b=$('#mvf');b.disabled=true;const l=velhas();let ok=0,er=0,n=0;
+      for(const p of l){n++;$('#mvm').textContent=`Copiando ${n} de ${l.length}… (${ok} fotos ok${er?', '+er+' com erro':''})`;
+        try{const novas=[];for(const u of p.imagens){if(!/bmgzabkzuagegovozvlt/.test(u)){novas.push(u);continue}
+            const r=await fetch(u);if(!r.ok)throw new Error('foto não abriu');const blob=await r.blob();const ext=(blob.type.split('/')[1]||'jpg').replace('jpeg','jpg').replace(/[^a-z0-9]/g,'');
+            const nome='produtos/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.'+ext;
+            await api('/storage/v1/object/loja/'+nome,{method:'POST',body:blob,headers:{'Content-Type':blob.type||'image/jpeg'}});
+            novas.push(SB+'/storage/v1/object/public/loja/'+nome);ok++}
+          await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'PATCH',json:{imagens:novas}});p.imagens=novas}
+        catch(e){er++;console.error(e)}}
+      $('#mvm').textContent=er?`Terminou: ${ok} fotos copiadas, ${er} produto(s) com erro. Toque de novo para tentar os que faltam.`:`Pronto! ${ok} fotos copiadas ✅`;b.disabled=false;if(!er)toast('Fotos copiadas ✅')}}
   $('#cs').onclick=async()=>{const n={nome:$('#cnm').value,slogan:$('#csl').value,whatsapp:$('#cwa').value,aviso:$('#cav').value,pix_chave:$('#cpx').value.trim(),pix_nome:$('#cpn').value,pix_cidade:$('#cpi').value,frete_ativo:$('#cfa').checked};
     try{await api('/rest/v1/loja_config?id=eq.1',{method:'PATCH',json:n});cfg={...cfg,...n};document.title=cfg.nome;setLogo();toast('Salvo! ✅')}catch(e){toast(e.message)}};
 }
