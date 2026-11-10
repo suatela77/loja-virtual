@@ -213,7 +213,7 @@ header.top .wrap{padding-top:6px!important;padding-bottom:6px!important}
 .ped .pit{list-style:none;margin:10px 0 0;padding:0;border-top:1px dashed #e0d4f7}.ped .pit li{display:flex;gap:8px;align-items:baseline;padding:8px 0;border-bottom:1px dashed #e0d4f7;font-size:14.5px;line-height:1.25}
 .ped .pit .q{font-weight:800;min-width:28px}.ped .pit .n{flex:1;font-weight:600}.ped .pit .v{font-weight:700;white-space:nowrap}
 .ped .ptot{display:flex;justify-content:space-between;align-items:center;font-size:17px;padding:10px 0 6px}.ped .ptot b{font-size:22px;color:#e91e63}
-.ped .pad{margin-top:4px}.ped select.f{margin-top:10px}.ped .pbt{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.ped .lucro{margin:6px 0;padding:8px 10px;background:#e8f8ee;border-radius:10px;color:#166534;font-size:14px}.pad{margin-top:4px}.ped select.f{margin-top:10px}.ped .pbt{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .ped .pit .n small{display:block;font-weight:500;color:#6b5a8e;font-size:13px;margin-top:2px}
 </style>
 </head>
@@ -565,7 +565,7 @@ async function vRecibo(cod){
 }
 
 /* ---------- administração ---------- */
-let adm={tab:'pedidos',pedidos:[],clientes:[],custos:{},edit:null,files:[],np:null,cedit:null,cq:''};
+let adm={tab:'pedidos',pedidos:[],clientes:[],custos:{},pv:'ativos',per:'mes',edit:null,files:[],np:null,cedit:null,cq:''};
 async function vAdmin(){
   if(!sess){
     $('#app').innerHTML=`<div class="wrap"><h2 style="margin:16px 0">Área da loja 🔐</h2><div class="box">
@@ -577,7 +577,7 @@ async function vAdmin(){
   if(!ok){$('#app').innerHTML=`<div class="wrap empty"><div class="big">🚫</div><h2>Esta conta não é da loja</h2><button class="btn" id="so">Sair</button></div>`;$('#so').onclick=sair;return}
   adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc').catch(()=>[]);
   adm.clientes=await api('/rest/v1/loja_clientes?select=*&order=nome.asc').catch(()=>[]);
-  await loadCustos();
+  await loadCustos();snapPend();
   prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc').catch(()=>prods);prods.sort(ABC);
   drawAdmin();
 }
@@ -596,6 +596,32 @@ function drawAdmin(){
   $('#so').onclick=sair;
   ({pedidos:aPedidos,clientes:aClientes,produtos:aProdutos,frete:aFrete,config:aConfig})[adm.tab]();
 }
+const R2=x=>Math.round(x*100)/100;
+function lucroDe(p){const its=(p.itens||[]).filter(i=>i.id);const rec=its.reduce((t,i)=>t+i.preco*i.qtd,0);
+  if(p.lucro!=null&&p.custo_total!=null)return{rec,custo:Number(p.custo_total),lucro:Number(p.lucro),ok:true,snap:true};
+  let ok=its.length>0,custo=0;its.forEach(i=>{const c=adm.custos[i.id];if(c>0)custo+=c*i.qtd;else ok=false});
+  return{rec,custo,lucro:rec-custo,ok,snap:false}}
+function snapItens(itens){const its=(itens||[]).filter(i=>i.id);if(!its.length)return{};let custo=0;
+  for(const i of its){const c=adm.custos[i.id];if(!(c>0))return{};custo+=c*i.qtd}
+  const rec=its.reduce((t,i)=>t+i.preco*i.qtd,0);return{custo_total:R2(custo),lucro:R2(rec-custo)}}
+async function patchPed(id,json){
+  try{await api('/rest/v1/loja_pedidos?id=eq.'+id,{method:'PATCH',json})}
+  catch(e){if(/column|schema cache/i.test(e.message)){const j={...json};delete j.lucro;delete j.custo_total;delete j.arquivado;
+      if(Object.keys(j).length)return api('/rest/v1/loja_pedidos?id=eq.'+id,{method:'PATCH',json:j});
+      throw new Error('Falta rodar o comando novo no Supabase (colunas de arquivo e lucro).')}
+    throw e}}
+async function postPed(json){try{return await api('/rest/v1/loja_pedidos',{method:'POST',json})}catch(e){if(/column|schema cache/i.test(e.message)){const j={...json};delete j.lucro;delete j.custo_total;return api('/rest/v1/loja_pedidos',{method:'POST',json:j})}throw e}}
+async function snapPend(){for(const p of adm.pedidos){if(p.lucro==null&&(p.status==='pago'||p.status==='enviado')){const sn=snapItens(p.itens);if(sn.lucro!=null){try{await patchPed(p.id,sn);p.custo_total=sn.custo_total;p.lucro=sn.lucro}catch(e){break}}}}}
+function lucroLinha(p){const L=lucroDe(p);
+  if(!L.ok)return '<div class="muted pad">💰 Lucro: cadastre o valor de compra de todos os itens para calcular.</div>';
+  return `<div class="lucro">💰 Lucro: <b>${brl(L.lucro)}</b> · ${fmtp(pct(L.rec,L.custo))} sobre a compra <span class="muted">(compra ${brl(L.custo)})${L.snap?'':' · estimado'}</span></div>`}
+function resumoHtml(){const now=new Date();const f=p=>{const d=new Date(p.created_at);return adm.per==='tudo'||(adm.per==='mes'&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear())||(adm.per==='ant'&&((d.getMonth()+1)%12===now.getMonth()&&(now.getMonth()===0?d.getFullYear()===now.getFullYear()-1:d.getFullYear()===now.getFullYear())))};
+  const l=adm.pedidos.filter(p=>(p.status==='pago'||p.status==='enviado')&&f(p));let rec=0,custo=0,lu=0,inc=0;
+  l.forEach(p=>{const L=lucroDe(p);if(L.ok){rec+=L.rec;custo+=L.custo;lu+=L.lucro}else inc++});
+  const chip=(k,t)=>`<button class="chip ${adm.per===k?'on':''}" data-per="${k}">${t}</button>`;
+  return `<div class="box" style="background:#f5f0ff"><b>💰 Resumo de vendas</b><div style="margin:8px 0">${chip('mes','Este mês')}${chip('ant','Mês passado')}${chip('tudo','Tudo')}</div>
+  <div>Vendas pagas/entregues: <b>${l.length}</b></div><div>Receita (sem frete): <b>${brl(rec)}</b> · Compra: ${brl(custo)}</div>
+  <div class="price" style="font-size:24px">Lucro: ${brl(lu)}${custo>0?` <span style="font-size:15px">(${fmtp(pct(rec,custo))})</span>`:''}</div>${inc?`<div class="muted">${inc} venda(s) fora da conta: falta o valor de compra de algum item.</div>`:''}</div>`}
 function aPedidos(){
   if(adm.np)return aPedidoForm();
   const card=p=>{const st=STATUS[p.status]||[p.status,'#999'];const at=/^\[ATACADO\]/.test(p.obs||'');const ob=(p.obs||'').replace(/^\[ATACADO\]\s*/,'');
@@ -605,13 +631,21 @@ function aPedidos(){
   <div class="pn">${h(p.cliente_nome)}</div>
   <div class="muted">${new Date(p.created_at).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})} · 📞 ${h(p.cliente_tel)}</div>
   <ul class="pit">${p.itens.map(i=>`<li><span class="q">${i.qtd}×</span><span class="n">${h(String(i.nome).toUpperCase())}<small>${brl(i.preco)} cada</small></span><span class="v">${brl(i.preco*i.qtd)}</span></li>`).join('')}</ul>
-  <div class="ptot"><span>Total</span><b>${brl(p.total)}</b></div>
+  <div class="ptot"><span>Total</span><b>${brl(p.total)}</b></div>${lucroLinha(p)}
   ${p.endereco?`<div class="muted pad">📍 ${h(p.endereco)}</div>`:''}${ob?`<div class="muted pad">📝 ${h(ob)}</div>`:''}
   ${p.comprovante_url?`<p><a href="${h(p.comprovante_url)}" target="_blank"><img src="${h(p.comprovante_url)}" style="max-width:140px;border-radius:12px" alt="comprovante"></a></p>`:''}
   <select class="f" data-s="${p.id}">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===p.status?'selected':''}>${v[0]}</option>`).join('')}</select>
-  <div class="pbt"><button class="btn small" style="background:#f59e0b" data-ed="${p.id}">✏️ Editar</button><a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a><a class="btn small green" href="${wa}">WhatsApp</a>${p.endereco?`<a class="btn small" style="background:#33ccff;color:#05324a" target="_blank" rel="noopener" href="https://waze.com/ul?q=${encodeURIComponent(p.endereco)}&navigate=yes">🧭 Waze</a>`:''}<button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button></div>
+  <div class="pbt"><button class="btn small" style="background:#f59e0b" data-ed="${p.id}">✏️ Editar</button><a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a><a class="btn small green" href="${wa}">WhatsApp</a>${p.endereco?`<a class="btn small" style="background:#33ccff;color:#05324a" target="_blank" rel="noopener" href="https://waze.com/ul?q=${encodeURIComponent(p.endereco)}&navigate=yes">🧭 Waze</a>`:''}<button class="btn small ghost" data-ar="${p.id}">${p.arquivado?'↩️ Desarquivar':'📁 Arquivar'}</button><button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button></div>
   ${p.endereco?`<button class="btn block" style="margin-top:10px;background:linear-gradient(90deg,#16a34a,#22c55e)" data-eta="${p.id}">🚚 Avisar: pedido a caminho</button><div class="eta" id="eta-${p.id}"></div>`:''}</div>`};
-  $('#ad').innerHTML=`<button class="btn block" id="npd">+ Novo pedido (manual)</button><p></p>`+(adm.pedidos.length?adm.pedidos.map(card).join(''):'<div class="empty"><div class="big">📭</div><h2>Nenhum pedido ainda</h2></div>');
+  const arq=adm.pv==='arq';const lista=adm.pedidos.filter(p=>!!p.arquivado===arq);const nArq=adm.pedidos.filter(p=>p.arquivado).length;
+  const conc=adm.pedidos.filter(p=>!p.arquivado&&(p.status==='enviado'||p.status==='cancelado'));
+  $('#ad').innerHTML=`<button class="btn block" id="npd">+ Novo pedido (manual)</button><p></p>`+resumoHtml()+`<div style="margin:12px 0"><button class="chip ${arq?'':'on'}" data-pv="ativos">Em andamento (${adm.pedidos.length-nArq})</button><button class="chip ${arq?'on':''}" data-pv="arq">📁 Arquivados (${nArq})</button></div>`
+   +(!arq&&conc.length?`<button class="btn block ghost" id="arall">📁 Arquivar os ${conc.length} já entregues/cancelados</button><p></p>`:'')
+   +(lista.length?lista.map(card).join(''):`<div class="empty"><div class="big">${arq?'📁':'📭'}</div><h2>${arq?'Nenhum pedido arquivado':'Nenhum pedido em andamento'}</h2></div>`);
+  document.querySelectorAll('[data-pv]').forEach(b=>b.onclick=()=>{adm.pv=b.dataset.pv;aPedidos()});
+  document.querySelectorAll('[data-per]').forEach(b=>b.onclick=()=>{adm.per=b.dataset.per;aPedidos()});
+  document.querySelectorAll('[data-ar]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.ar);if(!p)return;try{await patchPed(p.id,{arquivado:!p.arquivado});p.arquivado=!p.arquivado;toast(p.arquivado?'Pedido arquivado 📁':'Pedido voltou para a lista');aPedidos()}catch(e){toast(e.message)}});
+  if($('#arall'))$('#arall').onclick=async()=>{if(!confirm('Arquivar '+conc.length+' pedido(s) já entregues ou cancelados? Eles continuam salvos na aba Arquivados.'))return;try{for(const p of conc){await patchPed(p.id,{arquivado:true});p.arquivado=true}toast('Pedidos arquivados 📁')}catch(e){toast(e.message)}aPedidos()};
   document.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.ed);if(!p)return;
     const fi=p.itens.find(i=>!i.id&&/^frete/i.test(String(i.nome)));
     adm.np={edit:p.id,codigo:p.codigo,cid:p.cliente_id||'',nome:p.cliente_nome||'',tel:p.cliente_tel==='-'?'':(p.cliente_tel||''),end:p.endereco||'',salvar:false,tipo:/^\[ATACADO\]/.test(p.obs||'')?'atacado':'varejo',
@@ -619,7 +653,7 @@ function aPedidos(){
     aPedidos();window.scrollTo(0,0)});
   $('#npd').onclick=()=>{adm.np={cid:'',nome:'',tel:'',end:'',salvar:true,tipo:'varejo',itens:[],frete:'',obs:'',status:'aguardando_pagamento',pid:'',qtd:'1'};aPedidos()};
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.del);if(!p||!confirm('Excluir o pedido '+p.codigo+' de '+p.cliente_nome+'? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_pedidos?id=eq.'+p.id,{method:'DELETE'});adm.pedidos=adm.pedidos.filter(x=>x.id!==p.id);toast('Pedido excluído');drawAdmin()}catch(e){toast(e.message)}});
-  document.querySelectorAll('[data-s]').forEach(s=>s.onchange=async()=>{try{await api('/rest/v1/loja_pedidos?id=eq.'+s.dataset.s,{method:'PATCH',json:{status:s.value}});adm.pedidos.find(p=>p.id===s.dataset.s).status=s.value;toast('Status atualizado ✅');drawAdmin()}catch(e){toast(e.message)}});
+  document.querySelectorAll('[data-s]').forEach(s=>s.onchange=async()=>{try{const po=adm.pedidos.find(p=>p.id===s.dataset.s);const sn=(s.value==='pago'||s.value==='enviado')?snapItens(po.itens):{};await patchPed(s.dataset.s,{status:s.value,...sn});po.status=s.value;Object.assign(po,sn);toast('Status atualizado ✅');drawAdmin()}catch(e){toast(e.message)}});
 }
 function aClientes(){
   if(adm.cedit)return aClienteForm();
@@ -691,11 +725,11 @@ function aPedidoForm(){
     if(fr>0)itens.push({id:null,nome:'Frete',preco:fr,qtd:1,imagem:''});
     $('#npsv').disabled=true;$('#npsv').textContent='Salvando...';
     try{
-      if(n.edit){await api('/rest/v1/loja_pedidos?id=eq.'+n.edit,{method:'PATCH',json:{cliente_nome:nome,cliente_tel:tel||'-',endereco:end,obs:((n.tipo==='atacado'?'[ATACADO] ':'')+n.obs.trim()).trim(),itens,total:npTotal(n),status:n.status}});
+      if(n.edit){await patchPed(n.edit,{cliente_nome:nome,cliente_tel:tel||'-',endereco:end,obs:((n.tipo==='atacado'?'[ATACADO] ':'')+n.obs.trim()).trim(),itens,total:npTotal(n),status:n.status,...snapItens(itens)});
         adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc');adm.np=null;toast('Pedido atualizado! ✅');drawAdmin();return}
       if(!cli&&n.salvar){const r=await api('/rest/v1/loja_clientes',{method:'POST',json:{nome,tel,endereco:end},headers:{Prefer:'return=representation'}});if(r&&r[0])cid=r[0].id;adm.clientes=await api('/rest/v1/loja_clientes?select=*&order=nome.asc')}
       const codigo=Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
-      await api('/rest/v1/loja_pedidos',{method:'POST',json:{codigo,cliente_nome:nome,cliente_tel:tel||'-',endereco:end,obs:((n.tipo==='atacado'?'[ATACADO] ':'')+n.obs.trim()).trim(),itens,total:npTotal(n),status:n.status,cliente_id:cid,origem:'manual'}});
+      await postPed({codigo,cliente_nome:nome,cliente_tel:tel||'-',endereco:end,obs:((n.tipo==='atacado'?'[ATACADO] ':'')+n.obs.trim()).trim(),itens,total:npTotal(n),status:n.status,cliente_id:cid,origem:'manual',...((n.status==='pago'||n.status==='enviado')?snapItens(itens):{})});
       adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc');adm.np=null;toast('Pedido salvo! ✅');drawAdmin();
     }catch(e){toast(e.message);$('#npsv').disabled=false;$('#npsv').textContent='Salvar pedido'}};
 }
