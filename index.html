@@ -213,7 +213,7 @@ header.top .wrap{padding-top:6px!important;padding-bottom:6px!important}
 .ped .pit{list-style:none;margin:10px 0 0;padding:0;border-top:1px dashed #e0d4f7}.ped .pit li{display:flex;gap:8px;align-items:baseline;padding:8px 0;border-bottom:1px dashed #e0d4f7;font-size:14.5px;line-height:1.25}
 .ped .pit .q{font-weight:800;min-width:28px}.ped .pit .n{flex:1;font-weight:600}.ped .pit .v{font-weight:700;white-space:nowrap}
 .ped .ptot{display:flex;justify-content:space-between;align-items:center;font-size:17px;padding:10px 0 6px}.ped .ptot b{font-size:22px;color:#e91e63}
-.ped .lucro{margin:6px 0;padding:8px 10px;background:#e8f8ee;border-radius:10px;color:#166534;font-size:14px}.pad{margin-top:4px}.ped select.f{margin-top:10px}.ped .pbt{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.ped .prd .prn{display:block;font-size:15px;line-height:1.25;margin-bottom:4px}.prd .pg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0}.prd .pc{background:#f8f5ff;border-radius:12px;padding:7px 8px;text-align:center;display:flex;flex-direction:column;gap:1px}.prd .pc span{font-size:11px;color:#7a6f99;text-transform:uppercase;letter-spacing:.4px}.prd .pc b{font-size:15px}.prd .pc em{font-style:normal;font-size:12px;font-weight:700}.prd .pc em small{font-weight:400;color:#6b7280;display:block}.prd .pbt{display:flex;gap:8px}.eb{display:inline-block;color:#fff;font-size:11.5px;font-weight:700;border-radius:20px;padding:2px 9px;margin:0 4px 0 0}.lucro{margin:6px 0;padding:8px 10px;background:#e8f8ee;border-radius:10px;color:#166534;font-size:14px}.pad{margin-top:4px}.ped select.f{margin-top:10px}.ped .pbt{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .ped .pit .n small{display:block;font-weight:500;color:#6b5a8e;font-size:13px;margin-top:2px}
 </style>
 </head>
@@ -638,7 +638,7 @@ function aReceber(p){if(p.status==='cancelado')return 0;const t=Number(p.total)|
   if(pg==null&&(p.status==='pago'||p.status==='enviado'))return 0;return Math.max(0,R2(t-(Number(pg)||0)))}
 function recLinha(p){if(p.pago_valor==null)return '';const f=aReceber(p);
   return `<div class="lucro" style="background:#fff7e6;color:#92400e">💵 Pago ${brl(Number(p.pago_valor)||0)} · ${f>0?`<b>Falta ${brl(f)}</b>`:'<b>Quitado ✅</b>'}</div>`}
-function estoqueBaixoHtml(){const l=prods.filter(p=>p.ativo&&p.estoque!=null&&p.estoque<=3).sort((a,b)=>a.estoque-b.estoque);
+function estoqueBaixoHtml(){const l=prods.filter(p=>p.ativo&&p.estoque!=null&&p.estoque<=2).sort((a,b)=>a.estoque-b.estoque);
   if(!l.length)return '';return `<div class="box" style="background:#fff1f2"><b>⚠️ Estoque baixo</b>${l.map(p=>`<div>${p.estoque===0?'🔴 ESGOTADO':'🟠 '+p.estoque+' restante(s)'} · ${h(p.nome)}</div>`).join('')}</div>`}
 function rankHtml(l){const m={};l.forEach(p=>(p.itens||[]).filter(i=>i.id).forEach(i=>{const r=m[i.id]||(m[i.id]={nome:i.nome,q:0,rec:0,custo:0,ok:true});r.q+=i.qtd;r.rec+=i.preco*i.qtd;const c=adm.custos[i.id];if(c>0)r.custo+=c*i.qtd;else r.ok=false}));
   const a=Object.values(m).sort((x,y)=>y.q-x.q).slice(0,10);if(!a.length)return '';
@@ -791,7 +791,14 @@ const fmtp=x=>(Math.round(x*10)/10).toString().replace('.',',')+'%';
 function lucroTxt(v,c){if(!(c>0)||!(v>0))return '';const l=v-c;return `${brl(l)} de lucro · <b>${fmtp(pct(v,c))}</b> sobre a compra (margem ${fmtp(l/v*100)})`}
 function aProdutos(){
   if(adm.edit){return aForm()}
-  $('#ad').innerHTML=`<button class="btn block" id="np">+ Novo produto</button>`+prods.map((p,i)=>`<div class="box row"><div class="th">${foto(p)?`<img src="${h(foto(p))}" alt="">`:'🎁'}</div><div class="grow"><b>${h(p.nome)}</b><div class="muted">${brl(p.preco)} ${p.ativo?'':'· 🙈 oculto'}</div>${adm.custos[p.id]>0?`<div class="muted" style="font-size:12.5px">Compra ${brl(adm.custos[p.id])} · lucro <b>${fmtp(pct(Number(p.preco),adm.custos[p.id]))}</b></div>`:''}</div><button class="btn small ghost" data-e="${p.id}">Editar</button><button class="btn small" style="background:#e53935;margin-left:6px" data-dp="${p.id}" aria-label="Excluir">🗑️</button></div>`).join('');
+  const q=(adm.pq||'').trim().toLowerCase();const lst=prods.filter(p=>!q||String(p.nome).toLowerCase().includes(q));
+  const cel=(t,v,c,cor)=>{const ok=v>0&&c>0;return `<div class="pc"><span>${t}</span><b>${v>0?brl(v):'—'}</b>${ok?`<em style="color:${cor}">+${fmtp(pct(v,c))}<small>${brl(v-c)} por peça</small></em>`:'<em class="muted">&nbsp;</em>'}</div>`};
+  $('#ad').innerHTML=`<button class="btn block" id="np">+ Novo produto</button><input class="f" id="pq" placeholder="🔍 Buscar produto…" value="${h(adm.pq||'')}" style="margin:10px 0">`+(lst.length?lst.map(p=>{const c=adm.custos[p.id];const e=p.estoque;
+    const est=e==null?'':e===0?'<span class="eb" style="background:#e11d48">Esgotado</span>':e<=2?`<span class="eb" style="background:#f59e0b">Estoque ${e} · baixo</span>`:`<span class="eb" style="background:#16a34a">Estoque ${e}</span>`;
+    return `<div class="box prd"><div class="row"><div class="th">${foto(p)?`<img src="${h(foto(p))}" alt="">`:'🎁'}</div><div class="grow"><b class="prn">${h(p.nome)}</b><div>${est}${p.ativo?'':'<span class="eb" style="background:#64748b">🙈 oculto</span>'}</div></div></div>
+    <div class="pg">${cel('Varejo',p.preco,c,'#166534')}${cel('Atacado',p.preco_atacado,c,'#0369a1')}<div class="pc"><span>Compra</span><b>${c>0?brl(c):'—'}</b><em class="muted">&nbsp;</em></div></div>
+    <div class="pbt"><button class="btn small" data-e="${p.id}" style="flex:1">✏️ Editar</button><button class="btn small" style="background:#e53935" data-dp="${p.id}">🗑️</button></div></div>`}).join(''):'<div class="empty"><h2>Nada encontrado</h2></div>');
+  $('#pq').oninput=e=>{adm.pq=e.target.value;const pos=e.target.selectionStart;aProdutos();const n=$('#pq');n.focus();n.setSelectionRange(pos,pos)};
   $('#np').onclick=()=>{adm.edit={nome:'',descricao:'',preco:'',custo:'',categoria:'',imagens:[],estoque:null,ativo:true};adm.files=[];aProdutos()};
   document.querySelectorAll('[data-dp]').forEach(b=>b.onclick=async()=>{const p=prod(b.dataset.dp);if(!p||!confirm('Excluir o produto "'+p.nome+'"? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'DELETE'});prods=prods.filter(x=>x.id!==p.id);toast('Produto excluído');aProdutos()}catch(e){toast(e.message)}});
   document.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{adm.edit=JSON.parse(JSON.stringify(prod(b.dataset.e)));adm.edit.custo=adm.custos[b.dataset.e]??'';adm.files=[];aProdutos()});
