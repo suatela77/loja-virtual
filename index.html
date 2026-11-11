@@ -606,6 +606,7 @@ async function vAdmin(){
   adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc').catch(()=>[]);
   adm.clientes=await api('/rest/v1/loja_clientes?select=*&order=nome.asc').catch(()=>[]);
   adm.cupons=await api('/rest/v1/loja_cupons?select=*&order=created_at.desc').catch(()=>null);
+  adm.vis=await rpc('loja_visitas_resumo',{}).catch(()=>null);
   await loadCustos();snapPend();
   prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc').catch(()=>prods);prods.sort(ABC);
   drawAdmin();
@@ -648,6 +649,8 @@ async function snapPend(){for(const p of adm.pedidos){if(p.lucro==null&&(p.statu
 function lucroLinha(p){const L=lucroDe(p);
   if(!L.ok)return '<div class="muted pad">💰 Lucro: cadastre o valor de compra de todos os itens para calcular.</div>';
   return `<div class="lucro">💰 Lucro: <b>${brl(L.lucro)}</b> · ${fmtp(pct(L.rec,L.custo))} sobre a compra <span class="muted">(compra ${brl(L.custo)})${L.snap?'':' · estimado'}</span></div>`}
+function visitasHtml(){const v=adm.vis;if(!v)return '';const c=(t,n)=>`<div style="flex:1;min-width:70px;text-align:center"><div style="font-size:24px;font-weight:900;color:var(--ink)">${n||0}</div><div class="muted" style="font-size:12px">${t}</div></div>`;
+  return `<div class="box" style="margin:12px 0"><b>👀 Visitantes</b> <span class="muted" style="font-size:12px">(pessoas diferentes)</span><div class="row" style="gap:6px;margin-top:8px">${c('Hoje',v.hoje)}${c('Ontem',v.ontem)}${c('7 dias',v.d7)}${c('30 dias',v.d30)}${c('Total',v.total)}</div></div>`}
 function resumoHtml(){const now=new Date();const f=p=>{const d=new Date(p.created_at);return adm.per==='tudo'||(adm.per==='mes'&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear())||(adm.per==='ant'&&((d.getMonth()+1)%12===now.getMonth()&&(now.getMonth()===0?d.getFullYear()===now.getFullYear()-1:d.getFullYear()===now.getFullYear())))};
   const l=adm.pedidos.filter(p=>(p.status==='pago'||p.status==='enviado')&&f(p));let rec=0,custo=0,lu=0,inc=0;
   l.forEach(p=>{const L=lucroDe(p);if(L.ok){rec+=L.rec;custo+=L.custo;lu+=L.lucro}else inc++});
@@ -693,7 +696,7 @@ function aPedidos(){
   ${p.endereco?`<button class="btn block" style="margin-top:10px;background:linear-gradient(90deg,#16a34a,#22c55e)" data-eta="${p.id}">🚚 Avisar: pedido a caminho</button><div class="eta" id="eta-${p.id}"></div>`:''}</div>`};
   const arq=adm.pv==='arq';const lista=adm.pedidos.filter(p=>!!p.arquivado===arq);const nArq=adm.pedidos.filter(p=>p.arquivado).length;
   const conc=adm.pedidos.filter(p=>!p.arquivado&&(p.status==='enviado'||p.status==='cancelado'));
-  $('#ad').innerHTML=`<button class="btn block" id="npd">+ Novo pedido (manual)</button><p></p>`+estoqueBaixoHtml()+resumoHtml()+`<div style="margin:12px 0"><button class="chip ${arq?'':'on'}" data-pv="ativos">Em andamento (${adm.pedidos.length-nArq})</button><button class="chip ${arq?'on':''}" data-pv="arq">📁 Arquivados (${nArq})</button></div>`
+  $('#ad').innerHTML=`<button class="btn block" id="npd">+ Novo pedido (manual)</button><p></p>`+estoqueBaixoHtml()+visitasHtml()+resumoHtml()+`<div style="margin:12px 0"><button class="chip ${arq?'':'on'}" data-pv="ativos">Em andamento (${adm.pedidos.length-nArq})</button><button class="chip ${arq?'on':''}" data-pv="arq">📁 Arquivados (${nArq})</button></div>`
    +(!arq&&conc.length?`<button class="btn block ghost" id="arall">📁 Arquivar os ${conc.length} já entregues/cancelados</button><p></p>`:'')
    +(lista.length?lista.map(card).join(''):`<div class="empty"><div class="big">${arq?'📁':'📭'}</div><h2>${arq?'Nenhum pedido arquivado':'Nenhum pedido em andamento'}</h2></div>`);
   document.querySelectorAll('[data-pv]').forEach(b=>b.onclick=()=>{adm.pv=b.dataset.pv;aPedidos()});
@@ -1015,6 +1018,8 @@ function route(){
   if(a==='produto')vProduto(b);else if(a==='carrinho')vCarrinho();else if(a==='pedido')vPedido(b);else if(a==='recibo')vRecibo(b);else if(a==='admin')vAdmin();else vHome();
 }
 addEventListener('hashchange',route);
+(function(){try{if(/^#\/admin/.test(location.hash)||ls.get('loja_sess'))return;let v=localStorage.getItem('loja_vid');if(!v){v=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(36).slice(2)).replace(/-/g,'');localStorage.setItem('loja_vid',v)}
+if(sessionStorage.getItem('loja_vst'))return;sessionStorage.setItem('loja_vst','1');rpc('loja_visita',{p_vid:v,p_pag:(location.hash||'#/').slice(0,60)}).catch(()=>{})}catch(e){}})();
 load().then(route);
 </script>
 </body>
