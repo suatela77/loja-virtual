@@ -973,23 +973,28 @@ function aForn(){
   if(adm.forn==null){$('#ad').innerHTML='<div class="box"><b>🏭 Fornecedores</b><p class="muted">Falta rodar o comando novo no Supabase (está no chat). Depois, feche e abra o painel.</p></div>';return}
   if(adm.nc)return aNovoPedForn();
   const fe=adm.fedit||{nome:'',whatsapp:'',obs:''};
-  const resumoIt=c=>(c.itens||[]).map(i=>i.qtd+'x '+h(i.nome)).join(', ');
+  const resumoIt=c=>(c.itens||[]).map(i=>i.qtd+'x '+h(i.nome)).join(', ')+(()=>{const t=(c.itens||[]).reduce((a,i)=>a+(i.custo>0?i.custo*i.qtd:0),0);return t>0?`<div style="font-weight:900;margin-top:4px">💰 Total: ${brl(t)}</div>`:''})();
   $('#ad').innerHTML=`<button class="btn block" id="fnp">📲 Fazer pedido ao fornecedor</button><p></p>
   <div class="box"><h3>${fe.id?'✏️ Editar fornecedor':'➕ Cadastrar fornecedor'}</h3>
   <label for="fn">Nome</label><input class="f" id="fn" value="${h(fe.nome)}">
   <label for="fw">WhatsApp (com DDD)</label><input class="f" id="fw" inputmode="tel" placeholder="(22) 99999-9999" value="${h(fe.whatsapp)}">
   <label for="fo">Observações (opcional)</label><input class="f" id="fo" value="${h(fe.obs||'')}">
+  <details style="margin-top:12px" ${fe.id?'open':''}><summary style="cursor:pointer;font-weight:800">🛍️ Produtos que ele fornece (<span id="fpn">${(fe.produtos||[]).length}</span>)</summary>
+  <p class="muted" style="font-size:13px">Marque só o que esse fornecedor vende. No pedido, só esses produtos aparecem.</p>
+  <div style="max-height:320px;overflow:auto;border:2px solid #ede9fe;border-radius:12px;padding:6px 10px">${prods.filter(p=>p.ativo!==false).slice().sort((x,y)=>String(x.nome).localeCompare(y.nome,'pt-BR')).map(p=>`<label style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid #f3f0ff;font-weight:700;font-size:14px"><input type="checkbox" data-fpc="${p.id}" ${(fe.produtos||[]).some(x=>String(x)===String(p.id))?'checked':''} style="width:22px;height:22px;flex:none"> <span>${h(p.nome)}</span></label>`).join('')}</div></details>
   <p></p><button class="btn block" id="fs">${fe.id?'Salvar':'Cadastrar'}</button>${fe.id?'<p></p><button class="btn block ghost" id="fc">Cancelar</button>':''}</div>`+
-  (adm.forn.length?adm.forn.map(f=>`<div class="box"><b style="font-size:18px">${h(f.nome)}</b><div class="muted">📞 ${h(f.whatsapp||'sem WhatsApp')}</div>${f.obs?`<div class="muted">${h(f.obs)}</div>`:''}
+  (adm.forn.length?adm.forn.map(f=>`<div class="box"><b style="font-size:18px">${h(f.nome)}</b><div class="muted">📞 ${h(f.whatsapp||'sem WhatsApp')}</div>${f.obs?`<div class="muted">${h(f.obs)}</div>`:''}<div class="muted">🛍️ ${(f.produtos||[]).length?(f.produtos.length+' produto(s) cadastrados'):'nenhum produto marcado (aparecem todos no pedido)'}</div>
   <div class="pbt"><button class="btn small" data-fp="${f.id}">📲 Fazer pedido</button><button class="btn small ghost" data-fe="${f.id}">✏️ Editar</button><button class="btn small" style="background:#e53935" data-fd="${f.id}">🗑️</button></div></div>`).join(''):'<div class="empty"><div class="big">🏭</div><h2>Nenhum fornecedor ainda</h2></div>')+
   (adm.compras.length?`<h3 style="margin:18px 0 8px">Pedidos feitos</h3>`+adm.compras.map(c=>`<div class="box"><div class="row"><b class="grow">${h(c.fornecedor_nome||'Fornecedor')}</b><span class="tag" style="background:${c.status==='recebido'?'#16a34a':'#f59e0b'}">${c.status==='recebido'?'Recebido':'Enviado'}</span></div>
   <div class="muted">${dbr(c.created_at)}</div><div>${resumoIt(c)}</div>${c.obs?`<div class="muted">Obs.: ${h(c.obs)}</div>`:''}
   <div class="pbt">${c.status==='recebido'?'':`<button class="btn small" data-cr="${c.id}">✅ Chegou (somar ao estoque)</button>`}<button class="btn small ghost" data-cw="${c.id}">📲 Reenviar</button><button class="btn small" style="background:#e53935" data-cd="${c.id}">🗑️</button></div></div>`).join(''):'');
   $('#fnp').onclick=()=>{adm.nc={fid:'',itens:[],obs:''};aForn()};
   $('#fs').onclick=async()=>{const nome=$('#fn').value.trim();if(!nome){toast('Informe o nome');return}
-    const j={nome,whatsapp:$('#fw').value.trim()||null,obs:$('#fo').value.trim()||null};
-    try{if(fe.id)await api('/rest/v1/loja_fornecedores?id=eq.'+fe.id,{method:'PATCH',json:j});else await api('/rest/v1/loja_fornecedores',{method:'POST',json:j});
+    const j={nome,whatsapp:$('#fw').value.trim()||null,obs:$('#fo').value.trim()||null,produtos:[...document.querySelectorAll('[data-fpc]:checked')].map(x=>x.dataset.fpc)};
+    const grava=async jj=>{if(fe.id)await api('/rest/v1/loja_fornecedores?id=eq.'+fe.id,{method:'PATCH',json:jj});else await api('/rest/v1/loja_fornecedores',{method:'POST',json:jj})};
+    try{try{await grava(j)}catch(e){if(/produtos/i.test(e.message)){const{produtos,...sem}=j;await grava(sem);toast('Salvo, mas falta rodar o SQL novo para guardar os produtos')}else throw e}
       adm.fedit=null;await loadForn();toast('Fornecedor salvo! ✅');aForn()}catch(e){toast(e.message)}};
+  document.querySelectorAll('[data-fpc]').forEach(x=>x.onchange=()=>{$('#fpn').textContent=document.querySelectorAll('[data-fpc]:checked').length});
   if($('#fc'))$('#fc').onclick=()=>{adm.fedit=null;aForn()};
   document.querySelectorAll('[data-fp]').forEach(b=>b.onclick=()=>{adm.nc={fid:b.dataset.fp,itens:[],obs:''};aForn()});
   document.querySelectorAll('[data-fe]').forEach(b=>b.onclick=()=>{adm.fedit=adm.forn.find(x=>x.id===b.dataset.fe);aForn();window.scrollTo(0,0)});
@@ -1009,19 +1014,24 @@ function aForn(){
 }
 function aNovoPedForn(){
   const n=adm.nc,f=adm.forn.find(x=>x.id===n.fid);
-  const ativos=prods.filter(p=>p.ativo!==false).sort((a,b)=>String(a.nome).localeCompare(b.nome,'pt-BR'));
+  const doForn=p=>!f||!(f.produtos||[]).length||f.produtos.some(x=>String(x)===String(p.id));
+  const ativos=prods.filter(p=>p.ativo!==false&&doForn(p)).sort((a,b)=>String(a.nome).localeCompare(b.nome,'pt-BR'));
   $('#ad').innerHTML=`<div class="box"><h3>📲 Pedido ao fornecedor</h3>
   <label for="nf">Fornecedor</label><select class="f" id="nf"><option value="">— escolha —</option>${adm.forn.map(x=>`<option value="${x.id}" ${x.id===n.fid?'selected':''}>${h(x.nome)}</option>`).join('')}</select>
   ${adm.forn.length?'':'<p class="muted">Cadastre um fornecedor primeiro (botão Voltar).</p>'}
-  <label for="npp">Produto da loja</label><select class="f" id="npp"><option value="">— escolha —</option>${ativos.filter(p=>!n.itens.some(i=>String(i.pid)===String(p.id))).map(p=>`<option value="${p.id}">${h(p.nome)}${p.estoque!=null?' (estoque '+p.estoque+')':''}</option>`).join('')}</select>
+  <label for="npp">Produto${f&&(f.produtos||[]).length?' (só os deste fornecedor)':''}</label><select class="f" id="npp"><option value="">— escolha —</option>${ativos.filter(p=>!n.itens.some(i=>String(i.pid)===String(p.id))).map(p=>`<option value="${p.id}">${h(p.nome)}${p.estoque!=null?' (estoque '+p.estoque+')':''}</option>`).join('')}</select>
   <label for="nt">ou digite outro item</label><input class="f" id="nt" placeholder="Item que não está na loja">
   <div class="row" style="gap:8px;align-items:flex-end"><div style="width:110px"><label for="nq">Quantidade</label><input class="f" id="nq" inputmode="numeric" value="1"></div><div class="grow"><button class="btn block" id="na">+ Adicionar</button></div></div>
   <p></p><button class="btn block ghost" id="nl">⚠️ Incluir itens com estoque baixo</button></div>
-  <div class="box" style="border:3px solid #ff7a00;background:linear-gradient(135deg,#fff7ed,#fff)"><div style="font-size:19px;font-weight:900;color:#9a3412">🧾 LISTA PARA O FORNECEDOR${n.itens.length?` <span style="background:#ff7a00;color:#fff;border-radius:20px;padding:2px 10px;font-size:14px">${n.itens.length} ${n.itens.length>1?'itens':'item'}</span>`:''}</div>${n.itens.length?n.itens.map((i,k)=>`<div style="display:flex;gap:10px;align-items:center;margin-top:10px;background:#fff;border:2px solid #fed7aa;border-radius:14px;padding:10px 12px"><span style="flex:1;font-weight:900;font-size:16px;line-height:1.25;color:#3b1d4a">${h(i.nome)}</span><input class="f" style="width:74px;font-size:20px;font-weight:900;text-align:center;margin:0" inputmode="numeric" data-iq="${k}" value="${i.qtd}" aria-label="Quantidade"><button class="btn small" style="background:#e53935" data-ir="${k}" aria-label="Remover">✕</button></div>`).join(''):'<p class="muted">Nenhum item ainda. Escolha acima e toque em + Adicionar.</p>'}
+  <div class="box" style="border:3px solid #ff7a00;background:linear-gradient(135deg,#fff7ed,#fff)"><div style="font-size:19px;font-weight:900;color:#9a3412">🧾 LISTA PARA O FORNECEDOR${n.itens.length?` <span style="background:#ff7a00;color:#fff;border-radius:20px;padding:2px 10px;font-size:14px">${n.itens.length} ${n.itens.length>1?'itens':'item'}</span>`:''}</div>${n.itens.length?n.itens.map((i,k)=>`<div style="display:flex;gap:10px;align-items:center;margin-top:10px;background:#fff;border:2px solid #fed7aa;border-radius:14px;padding:10px 12px"><span style="flex:1;font-weight:900;font-size:16px;line-height:1.25;color:#3b1d4a">${h(i.nome)}${adm.custos[i.pid]>0?`<br><span style="font-weight:600;font-size:13px;color:#6b7280">${brl(adm.custos[i.pid])} cada</span>`:''}</span><input class="f" style="width:74px;font-size:20px;font-weight:900;text-align:center;margin:0" inputmode="numeric" data-iq="${k}" value="${i.qtd}" aria-label="Quantidade"><button class="btn small" style="background:#e53935" data-ir="${k}" aria-label="Remover">✕</button></div>`).join(''):'<p class="muted">Nenhum item ainda. Escolha acima e toque em + Adicionar.</p>'}
+  <div id="ntot"></div>
   <label for="no">Observações (opcional)</label><input class="f" id="no" value="${h(n.obs)}" placeholder="Ex.: entregar até sexta">
   <p class="muted" style="margin-bottom:4px">Mensagem que vai para o WhatsApp:</p><pre id="npv" style="white-space:pre-wrap;background:#f3f4f6;border-radius:12px;padding:12px;font-family:inherit;font-size:14px;margin:0"></pre>
   <p></p><button class="btn block green" id="nsend">📲 Enviar pelo WhatsApp</button><p></p><button class="btn block ghost" id="nvolta">Voltar</button></div>`;
-  const prev=()=>{$('#npv').textContent=n.itens.length?msgForn(f,n.itens,n.obs):'(adicione itens para ver a mensagem)'};prev();
+  const custoDe=i=>i.pid?adm.custos[i.pid]:null;
+  const totTxt=()=>{let t=0,sem=0;n.itens.forEach(i=>{const c=custoDe(i);if(c>0)t+=c*(i.qtd||0);else sem++});return {t,sem}};
+  const tot=()=>{const {t,sem}=totTxt();const el=$('#ntot');if(el)el.innerHTML=n.itens.length?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:12px 14px;border-radius:14px;background:#16a34a;color:#fff"><span style="font-weight:800">💰 TOTAL DO PEDIDO</span><b style="font-size:22px">${brl(t)}</b></div>${sem?`<div class="muted" style="font-size:13px;margin-top:6px">⚠️ ${sem} item(ns) sem preço de compra cadastrado não entraram na soma.</div>`:''}`:''};
+  const prev=()=>{tot();$('#npv').textContent=n.itens.length?msgForn(f,n.itens,n.obs):'(adicione itens para ver a mensagem)'};prev();
   $('#nf').onchange=e=>{n.fid=e.target.value;aForn()};
   $('#no').oninput=e=>{n.obs=e.target.value;prev()};
   const add=(pid,nome,q)=>{const ex=pid&&n.itens.find(i=>String(i.pid)===String(pid));if(ex)ex.qtd+=q;else n.itens.push({pid:pid||null,nome,qtd:q})};
@@ -1029,7 +1039,7 @@ function aNovoPedForn(){
     const t=$('#nt').value.trim(),pid=$('#npp').value;
     if(t)add(null,t,q);else if(pid){const p=prods.find(x=>String(x.id)===pid);add(p.id,p.nome,q)}else{toast('Escolha um produto ou digite o item');return}
     aForn()};
-  $('#nl').onclick=()=>{const l=prods.filter(p=>p.ativo!==false&&p.estoque!=null&&p.estoque<=2);if(!l.length){toast('Nenhum produto com estoque baixo 👍');return}
+  $('#nl').onclick=()=>{const l=prods.filter(p=>p.ativo!==false&&doForn(p)&&p.estoque!=null&&p.estoque<=2);if(!l.length){toast('Nenhum produto com estoque baixo 👍');return}
     l.forEach(p=>{if(!n.itens.some(i=>String(i.pid)===String(p.id)))n.itens.push({pid:p.id,nome:p.nome,qtd:5})});aForn()};
   document.querySelectorAll('[data-iq]').forEach(i=>i.oninput=()=>{n.itens[+i.dataset.iq].qtd=parseInt(i.value)||0;prev()});
   document.querySelectorAll('[data-ir]').forEach(b=>b.onclick=()=>{n.itens.splice(+b.dataset.ir,1);aForn()});
@@ -1037,7 +1047,7 @@ function aNovoPedForn(){
   $('#nsend').onclick=async()=>{if(!f){toast('Escolha o fornecedor');return}if(!f.whatsapp){toast('Esse fornecedor está sem WhatsApp. Edite o cadastro.');return}
     const it=n.itens.filter(i=>i.qtd>0);if(!it.length){toast('Adicione pelo menos um item');return}
     window.open('https://wa.me/'+foneWa(f.whatsapp)+'?text='+encodeURIComponent(msgForn(f,it,n.obs)),'_blank');
-    try{await api('/rest/v1/loja_compras',{method:'POST',json:{fornecedor_id:f.id,fornecedor_nome:f.nome,itens:it,obs:n.obs||null,status:'enviado'}});adm.nc=null;await loadForn();toast('Pedido registrado! ✅');aForn()}catch(e){toast('Abriu o WhatsApp, mas não registrei no histórico: '+e.message)}};
+    try{await api('/rest/v1/loja_compras',{method:'POST',json:{fornecedor_id:f.id,fornecedor_nome:f.nome,itens:it.map(i=>({...i,custo:adm.custos[i.pid]||null})),obs:n.obs||null,status:'enviado'}});adm.nc=null;await loadForn();toast('Pedido registrado! ✅');aForn()}catch(e){toast('Abriu o WhatsApp, mas não registrei no histórico: '+e.message)}};
 }
 function aCupons(){
   if(adm.cupons==null){$('#ad').innerHTML='<div class="box"><b>🎟️ Cupons</b><p class="muted">Falta rodar o comando novo no Supabase (o app te avisou no chat). Depois, feche e abra o painel.</p></div>';return}
