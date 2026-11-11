@@ -967,7 +967,7 @@ function aFrete(){
 
 /* ---------- fornecedores e pedidos ao fornecedor ---------- */
 const foneWa=t=>{const n=String(t||'').replace(/\D/g,'');return n&&n.length<=11?'55'+n:n};
-const msgForn=(f,it,obs)=>'Olá'+(f?' '+f.nome:'')+'! Gostaria de fazer um pedido:\n\n'+it.map(i=>'• '+i.qtd+'x '+i.nome).join('\n')+(obs?'\n\nObservações: '+obs:'')+'\n\nPode me confirmar disponibilidade, valor e prazo? Obrigado!';
+const msgForn=(f,it,obs)=>'Olá'+(f?' *'+f.nome+'*':'')+'! Segue o meu pedido:\n\n'+it.map(i=>'✅ *'+i.qtd+'x* '+i.nome).join('\n\n')+'\n\n━━━━━━━━━━\n*Total: '+it.reduce((a,i)=>a+(Number(i.qtd)||0),0)+' unidades*'+(obs?'\n\n📝 *Obs.:* '+obs:'')+'\n\nPode me confirmar a disponibilidade e o prazo de entrega? Obrigado! 🙏';
 async function loadForn(){adm.forn=await api('/rest/v1/loja_fornecedores?select=*&order=nome.asc').catch(()=>null);adm.compras=await api('/rest/v1/loja_compras?select=*&order=created_at.desc&limit=100').catch(()=>[])}
 function aForn(){
   if(adm.forn==null){$('#ad').innerHTML='<div class="box"><b>🏭 Fornecedores</b><p class="muted">Falta rodar o comando novo no Supabase (está no chat). Depois, feche e abra o painel.</p></div>';return}
@@ -1032,7 +1032,7 @@ function aNovoPedForn(){
   const custoDe=i=>i.pid?adm.custos[i.pid]:null;
   const totTxt=()=>{let t=0,sem=0;n.itens.forEach(i=>{const c=custoDe(i);if(c>0)t+=c*(i.qtd||0);else sem++});return {t,sem}};
   const tot=()=>{const {t,sem}=totTxt();const el=$('#ntot');if(el)el.innerHTML=n.itens.length?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:12px 14px;border-radius:14px;background:#16a34a;color:#fff"><span style="font-weight:800">💰 TOTAL DO PEDIDO</span><b style="font-size:22px">${brl(t)}</b></div>${sem?`<div class="muted" style="font-size:13px;margin-top:6px">⚠️ ${sem} item(ns) sem preço de compra cadastrado não entraram na soma.</div>`:''}`:''};
-  const prev=()=>{tot();$('#npv').textContent=n.itens.length?msgForn(f,n.itens,n.obs):'(adicione itens para ver a mensagem)'};prev();
+  const prev=()=>{tot();$('#npv').innerHTML=n.itens.length?h(msgForn(f,n.itens,n.obs)).replace(/\*([^*\n]+)\*/g,'<b>$1</b>'):'(adicione itens para ver a mensagem)'};prev();
   if($('#nme'))$('#nme').onclick=()=>{adm.fedit=f;adm.nc=null;aForn();window.scrollTo(0,0)};
   $('#nf').onchange=e=>{n.fid=e.target.value;aForn()};
   $('#no').oninput=e=>{n.obs=e.target.value;prev()};
