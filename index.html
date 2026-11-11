@@ -780,7 +780,7 @@ function aPedidoForm(){
   <label for="npf">Frete (R$, opcional)</label><input class="f" id="npf" inputmode="decimal" value="${h(n.frete)}">
   <label for="npo">Observações</label><textarea class="f" id="npo" rows="2">${h(n.obs)}</textarea>
   <label for="npst">Situação</label><select class="f" id="npst">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===n.status?'selected':''}>${v[0]}</option>`).join('')}</select>
-  <p class="muted">O estoque não é conferido nem alterado: você ajusta as quantidades depois, no cadastro do produto.</p>
+  <p class="muted">O estoque dos produtos baixa sozinho quando o pedido é salvo (e volta se o pedido for cancelado ou excluído).</p>
   <div class="price" id="npt2">Total: ${brl(npTotal(n))}</div>
   <p></p><button class="btn block" id="npsv">Salvar pedido</button><p></p><button class="btn block ghost" id="npx">Cancelar</button></div>`;
   $('#npc').onchange=()=>{cap();aPedidoForm()};
