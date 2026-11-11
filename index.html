@@ -607,6 +607,7 @@ async function vAdmin(){
   adm.clientes=await api('/rest/v1/loja_clientes?select=*&order=nome.asc').catch(()=>[]);
   adm.cupons=await api('/rest/v1/loja_cupons?select=*&order=created_at.desc').catch(()=>null);
   adm.vis=await rpc('loja_visitas_resumo',{}).catch(()=>null);
+  await loadForn();
   await loadCustos();snapPend();
   prods=await api('/rest/v1/loja_produtos?select=*&order=created_at.desc').catch(()=>prods);prods.sort(ABC);
   drawAdmin();
@@ -618,14 +619,15 @@ function drawAdmin(){
   <button class="chip ${adm.tab==='pedidos'?'on':''}" data-t="pedidos">📦 Pedidos${pend?` (${pend})`:''}</button>
   <button class="chip ${adm.tab==='clientes'?'on':''}" data-t="clientes">👥 Clientes</button>
   <button class="chip ${adm.tab==='produtos'?'on':''}" data-t="produtos">🛍️ Produtos</button>
+  <button class="chip ${adm.tab==='forn'?'on':''}" data-t="forn">🏭 Fornecedores</button>
   <button class="chip ${adm.tab==='cupons'?'on':''}" data-t="cupons">🎟️ Cupons</button>
   <button class="chip ${adm.tab==='frete'?'on':''}" data-t="frete">🚚 Frete</button>
   <button class="chip ${adm.tab==='config'?'on':''}" data-t="config">⚙️ Loja</button>
   <button class="chip" id="so">Sair</button></div>
   <div class="stats"><div class="stat"><b>${pend}</b>pedidos novos</div><div class="stat"><b>${adm.pedidos.length}</b>pedidos</div><div class="stat"><b>${prods.length}</b>produtos</div></div><div id="ad"></div></div>`;
-  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{adm.tab=b.dataset.t;adm.edit=null;adm.np=null;adm.cedit=null;drawAdmin()});
+  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{adm.tab=b.dataset.t;adm.edit=null;adm.np=null;adm.cedit=null;adm.nc=null;adm.fedit=null;drawAdmin()});
   $('#so').onclick=sair;
-  ({pedidos:aPedidos,clientes:aClientes,produtos:aProdutos,cupons:aCupons,frete:aFrete,config:aConfig})[adm.tab]();
+  ({pedidos:aPedidos,clientes:aClientes,produtos:aProdutos,cupons:aCupons,forn:aForn,frete:aFrete,config:aConfig})[adm.tab]();
 }
 const R2=x=>Math.round(x*100)/100;
 const ymd=d=>{d=new Date(d);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
@@ -961,6 +963,81 @@ function aFrete(){
       $('#kcp').onclick=async()=>{try{await navigator.clipboard.writeText(msg);toast('Mensagem copiada ✅')}catch(e){toast('Não consegui copiar')}};
     }catch(e){m.textContent=e.message||'Erro ao calcular.'}
     b.disabled=false;b.textContent='Calcular'};
+}
+
+/* ---------- fornecedores e pedidos ao fornecedor ---------- */
+const foneWa=t=>{const n=String(t||'').replace(/\D/g,'');return n&&n.length<=11?'55'+n:n};
+const msgForn=(f,it,obs)=>'Olá'+(f?' '+f.nome:'')+'! Gostaria de fazer um pedido:\n\n'+it.map(i=>'• '+i.qtd+'x '+i.nome).join('\n')+(obs?'\n\nObservações: '+obs:'')+'\n\nPode me confirmar disponibilidade, valor e prazo? Obrigado!';
+async function loadForn(){adm.forn=await api('/rest/v1/loja_fornecedores?select=*&order=nome.asc').catch(()=>null);adm.compras=await api('/rest/v1/loja_compras?select=*&order=created_at.desc&limit=100').catch(()=>[])}
+function aForn(){
+  if(adm.forn==null){$('#ad').innerHTML='<div class="box"><b>🏭 Fornecedores</b><p class="muted">Falta rodar o comando novo no Supabase (está no chat). Depois, feche e abra o painel.</p></div>';return}
+  if(adm.nc)return aNovoPedForn();
+  const fe=adm.fedit||{nome:'',whatsapp:'',obs:''};
+  const resumoIt=c=>(c.itens||[]).map(i=>i.qtd+'x '+h(i.nome)).join(', ');
+  $('#ad').innerHTML=`<button class="btn block" id="fnp">📲 Fazer pedido ao fornecedor</button><p></p>
+  <div class="box"><h3>${fe.id?'✏️ Editar fornecedor':'➕ Cadastrar fornecedor'}</h3>
+  <label for="fn">Nome</label><input class="f" id="fn" value="${h(fe.nome)}">
+  <label for="fw">WhatsApp (com DDD)</label><input class="f" id="fw" inputmode="tel" placeholder="(22) 99999-9999" value="${h(fe.whatsapp)}">
+  <label for="fo">Observações (opcional)</label><input class="f" id="fo" value="${h(fe.obs||'')}">
+  <p></p><button class="btn block" id="fs">${fe.id?'Salvar':'Cadastrar'}</button>${fe.id?'<p></p><button class="btn block ghost" id="fc">Cancelar</button>':''}</div>`+
+  (adm.forn.length?adm.forn.map(f=>`<div class="box"><b style="font-size:18px">${h(f.nome)}</b><div class="muted">📞 ${h(f.whatsapp||'sem WhatsApp')}</div>${f.obs?`<div class="muted">${h(f.obs)}</div>`:''}
+  <div class="pbt"><button class="btn small" data-fp="${f.id}">📲 Fazer pedido</button><button class="btn small ghost" data-fe="${f.id}">✏️ Editar</button><button class="btn small" style="background:#e53935" data-fd="${f.id}">🗑️</button></div></div>`).join(''):'<div class="empty"><div class="big">🏭</div><h2>Nenhum fornecedor ainda</h2></div>')+
+  (adm.compras.length?`<h3 style="margin:18px 0 8px">Pedidos feitos</h3>`+adm.compras.map(c=>`<div class="box"><div class="row"><b class="grow">${h(c.fornecedor_nome||'Fornecedor')}</b><span class="tag" style="background:${c.status==='recebido'?'#16a34a':'#f59e0b'}">${c.status==='recebido'?'Recebido':'Enviado'}</span></div>
+  <div class="muted">${dbr(c.created_at)}</div><div>${resumoIt(c)}</div>${c.obs?`<div class="muted">Obs.: ${h(c.obs)}</div>`:''}
+  <div class="pbt">${c.status==='recebido'?'':`<button class="btn small" data-cr="${c.id}">✅ Chegou (somar ao estoque)</button>`}<button class="btn small ghost" data-cw="${c.id}">📲 Reenviar</button><button class="btn small" style="background:#e53935" data-cd="${c.id}">🗑️</button></div></div>`).join(''):'');
+  $('#fnp').onclick=()=>{adm.nc={fid:'',itens:[],obs:''};aForn()};
+  $('#fs').onclick=async()=>{const nome=$('#fn').value.trim();if(!nome){toast('Informe o nome');return}
+    const j={nome,whatsapp:$('#fw').value.trim()||null,obs:$('#fo').value.trim()||null};
+    try{if(fe.id)await api('/rest/v1/loja_fornecedores?id=eq.'+fe.id,{method:'PATCH',json:j});else await api('/rest/v1/loja_fornecedores',{method:'POST',json:j});
+      adm.fedit=null;await loadForn();toast('Fornecedor salvo! ✅');aForn()}catch(e){toast(e.message)}};
+  if($('#fc'))$('#fc').onclick=()=>{adm.fedit=null;aForn()};
+  document.querySelectorAll('[data-fp]').forEach(b=>b.onclick=()=>{adm.nc={fid:b.dataset.fp,itens:[],obs:''};aForn()});
+  document.querySelectorAll('[data-fe]').forEach(b=>b.onclick=()=>{adm.fedit=adm.forn.find(x=>x.id===b.dataset.fe);aForn();window.scrollTo(0,0)});
+  document.querySelectorAll('[data-fd]').forEach(b=>b.onclick=async()=>{const f=adm.forn.find(x=>x.id===b.dataset.fd);if(!confirm('Excluir o fornecedor '+f.nome+'? Os pedidos antigos continuam no histórico.'))return;
+    try{await api('/rest/v1/loja_fornecedores?id=eq.'+f.id,{method:'DELETE'});await loadForn();aForn()}catch(e){toast(e.message)}});
+  document.querySelectorAll('[data-cw]').forEach(b=>b.onclick=()=>{const c=adm.compras.find(x=>x.id===b.dataset.cw);const f=adm.forn.find(x=>x.id===c.fornecedor_id);
+    if(!f||!f.whatsapp){toast('Fornecedor sem WhatsApp cadastrado');return}window.open('https://wa.me/'+foneWa(f.whatsapp)+'?text='+encodeURIComponent(msgForn(f,c.itens||[],c.obs)),'_blank')});
+  document.querySelectorAll('[data-cd]').forEach(b=>b.onclick=async()=>{if(!confirm('Excluir este pedido do histórico?'))return;
+    try{await api('/rest/v1/loja_compras?id=eq.'+b.dataset.cd,{method:'DELETE'});await loadForn();aForn()}catch(e){toast(e.message)}});
+  document.querySelectorAll('[data-cr]').forEach(b=>b.onclick=async()=>{const c=adm.compras.find(x=>x.id===b.dataset.cr);
+    const somar=(c.itens||[]).filter(i=>i.pid&&prods.find(p=>String(p.id)===String(i.pid)&&p.estoque!=null));
+    if(!confirm('Marcar como recebido'+(somar.length?' e somar '+somar.length+' item(ns) ao estoque?':'?')))return;
+    try{for(const i of somar){const p=prods.find(x=>String(x.id)===String(i.pid));const novo=(p.estoque||0)+Number(i.qtd||0);
+        await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'PATCH',json:{estoque:novo}});p.estoque=novo}
+      await api('/rest/v1/loja_compras?id=eq.'+c.id,{method:'PATCH',json:{status:'recebido',recebido_em:new Date().toISOString()}});
+      await loadForn();toast('Estoque atualizado! ✅');aForn()}catch(e){toast(e.message)}});
+}
+function aNovoPedForn(){
+  const n=adm.nc,f=adm.forn.find(x=>x.id===n.fid);
+  const ativos=prods.filter(p=>p.ativo!==false).sort((a,b)=>String(a.nome).localeCompare(b.nome,'pt-BR'));
+  $('#ad').innerHTML=`<div class="box"><h3>📲 Pedido ao fornecedor</h3>
+  <label for="nf">Fornecedor</label><select class="f" id="nf"><option value="">— escolha —</option>${adm.forn.map(x=>`<option value="${x.id}" ${x.id===n.fid?'selected':''}>${h(x.nome)}</option>`).join('')}</select>
+  ${adm.forn.length?'':'<p class="muted">Cadastre um fornecedor primeiro (botão Voltar).</p>'}
+  <label for="npp">Produto da loja</label><select class="f" id="npp"><option value="">— escolha —</option>${ativos.map(p=>`<option value="${p.id}">${h(p.nome)}${p.estoque!=null?' (estoque '+p.estoque+')':''}</option>`).join('')}</select>
+  <label for="nt">ou digite outro item</label><input class="f" id="nt" placeholder="Item que não está na loja">
+  <div class="row" style="gap:8px;align-items:flex-end"><div style="width:110px"><label for="nq">Quantidade</label><input class="f" id="nq" inputmode="numeric" value="1"></div><div class="grow"><button class="btn block" id="na">+ Adicionar</button></div></div>
+  <p></p><button class="btn block ghost" id="nl">⚠️ Incluir itens com estoque baixo</button></div>
+  <div class="box"><b>Itens do pedido</b>${n.itens.length?n.itens.map((i,k)=>`<div class="row" style="gap:8px;align-items:center;margin-top:8px"><span class="grow" style="font-weight:700">${h(i.nome)}</span><input class="f" style="width:80px" inputmode="numeric" data-iq="${k}" value="${i.qtd}"><button class="btn small" style="background:#e53935" data-ir="${k}">✕</button></div>`).join(''):'<p class="muted">Nenhum item ainda.</p>'}
+  <label for="no">Observações (opcional)</label><input class="f" id="no" value="${h(n.obs)}" placeholder="Ex.: entregar até sexta">
+  <p class="muted" style="margin-bottom:4px">Mensagem que vai para o WhatsApp:</p><pre id="npv" style="white-space:pre-wrap;background:#f3f4f6;border-radius:12px;padding:12px;font-family:inherit;font-size:14px;margin:0"></pre>
+  <p></p><button class="btn block green" id="nsend">📲 Enviar pelo WhatsApp</button><p></p><button class="btn block ghost" id="nvolta">Voltar</button></div>`;
+  const prev=()=>{$('#npv').textContent=n.itens.length?msgForn(f,n.itens,n.obs):'(adicione itens para ver a mensagem)'};prev();
+  $('#nf').onchange=e=>{n.fid=e.target.value;aForn()};
+  $('#no').oninput=e=>{n.obs=e.target.value;prev()};
+  const add=(pid,nome,q)=>{const ex=pid&&n.itens.find(i=>String(i.pid)===String(pid));if(ex)ex.qtd+=q;else n.itens.push({pid:pid||null,nome,qtd:q})};
+  $('#na').onclick=()=>{const q=parseInt($('#nq').value)||0;if(q<1){toast('Informe a quantidade');return}
+    const t=$('#nt').value.trim(),pid=$('#npp').value;
+    if(t)add(null,t,q);else if(pid){const p=prods.find(x=>String(x.id)===pid);add(p.id,p.nome,q)}else{toast('Escolha um produto ou digite o item');return}
+    aForn()};
+  $('#nl').onclick=()=>{const l=prods.filter(p=>p.ativo!==false&&p.estoque!=null&&p.estoque<=2);if(!l.length){toast('Nenhum produto com estoque baixo 👍');return}
+    l.forEach(p=>{if(!n.itens.some(i=>String(i.pid)===String(p.id)))n.itens.push({pid:p.id,nome:p.nome,qtd:5})});aForn()};
+  document.querySelectorAll('[data-iq]').forEach(i=>i.oninput=()=>{n.itens[+i.dataset.iq].qtd=parseInt(i.value)||0;prev()});
+  document.querySelectorAll('[data-ir]').forEach(b=>b.onclick=()=>{n.itens.splice(+b.dataset.ir,1);aForn()});
+  $('#nvolta').onclick=()=>{adm.nc=null;aForn()};
+  $('#nsend').onclick=async()=>{if(!f){toast('Escolha o fornecedor');return}if(!f.whatsapp){toast('Esse fornecedor está sem WhatsApp. Edite o cadastro.');return}
+    const it=n.itens.filter(i=>i.qtd>0);if(!it.length){toast('Adicione pelo menos um item');return}
+    window.open('https://wa.me/'+foneWa(f.whatsapp)+'?text='+encodeURIComponent(msgForn(f,it,n.obs)),'_blank');
+    try{await api('/rest/v1/loja_compras',{method:'POST',json:{fornecedor_id:f.id,fornecedor_nome:f.nome,itens:it,obs:n.obs||null,status:'enviado'}});adm.nc=null;await loadForn();toast('Pedido registrado! ✅');aForn()}catch(e){toast('Abriu o WhatsApp, mas não registrei no histórico: '+e.message)}};
 }
 function aCupons(){
   if(adm.cupons==null){$('#ad').innerHTML='<div class="box"><b>🎟️ Cupons</b><p class="muted">Falta rodar o comando novo no Supabase (o app te avisou no chat). Depois, feche e abra o painel.</p></div>';return}
