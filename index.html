@@ -386,6 +386,7 @@ async function altsRua(rua,bai,cid,uf){
   if(out.length)ls.set(k,out);return out}
 async function locate(cep,num,txt){
   cep=(cep||'').replace(/\D/g,'');num=(num||'').trim();txt=(txt||'').trim();
+  {const g=txt.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);if(g)txt=txt.replace(g[0],' ('+g[1]+', '+g[2]+') ')}
   const mc=txt.match(COORD);if(mc)return{pt:{lat:+mc[1],lon:+mc[2]},end:txt.replace(COORD,'').replace(/\(\s*\)/,'').trim()||'Local escolhido',aprox:false};
   if(cep.length!==8){const m=txt.match(/\b(\d{5})-?(\d{3})\b/);if(m){cep=m[1]+m[2];num=num||txt.replace(m[0],'').replace(/^[\s,\-–]+|[\s,\-–]+$/g,'');txt=''}}
   if(cep.length!==8&&!txt)throw new Error('Digite o CEP (8 números) ou o endereço.');
@@ -922,7 +923,10 @@ function aFrete(){
   <label for="kcep">CEP do cliente</label><input class="f" id="kcep" inputmode="numeric" maxlength="9" placeholder="00000-000">
   <label for="knum">Número / complemento (opcional)</label><input class="f" id="knum" placeholder="Ex.: 120">
   <label for="kend">Ou o endereço completo do cliente</label><textarea class="f" id="kend" rows="3" style="min-height:84px" placeholder="Rua, número, bairro, cidade"></textarea>
-  <p></p><button class="btn block" id="kgo">Calcular</button><p class="muted" id="kmsg"></p>
+  <p></p><button class="btn block" id="kgo">Calcular</button>
+  <button class="btn ghost block" id="kmapa" style="margin-top:8px">🗺️ Marcar o local no mapa</button>
+  <p class="muted" style="font-size:13px">Não achou a rua? Toque em <b>Marcar o local no mapa</b> e toque no lugar exato da entrega. Também pode colar aqui o link do Google Maps ou as coordenadas (no Google Maps, segure o dedo no local e copie os números).</p>
+  <p class="muted" id="kmsg"></p>
   <div id="kres"></div></div>`;
   $('#kgps').onclick=()=>{
     const m=$('#kgm');
@@ -935,6 +939,7 @@ function aFrete(){
       cfg={...cfg,frete_origem:t};api('/rest/v1/loja_config?id=eq.1',{method:'PATCH',json:{frete_origem:t}}).then(()=>{m.textContent='Localização salva ✅'}).catch(e=>{m.textContent='Não consegui salvar: '+e.message})
     },err=>{m.textContent=err.code===1?'Permissão negada. Libere a localização no navegador.':'Não consegui pegar a localização. Tente de novo.'},{enableHighAccuracy:true,timeout:15000});
   };
+  $('#kmapa').onclick=()=>{const m=($('#kend').value||'').match(COORD);escolherNoMapa(m?{lat:+m[1],lon:+m[2]}:null,pt=>{$('#kcep').value='';$('#knum').value='';$('#kend').value=`Local marcado no mapa (${pt.lat.toFixed(6)}, ${pt.lon.toFixed(6)})`;$('#kgo').click()})};
   $('#kgo').onclick=async()=>{
     const pf=v=>parseFloat(String(v).replace(',','.'))||0;
     const nv={frete_origem:$('#kor').value.trim()||'Cabo Frio, RJ',frete_km:pf($('#kkm').value),frete_min:pf($('#kmn').value),frete_volta:$('#kvt').checked};
@@ -980,6 +985,30 @@ function aFrete(){
       $('#kcp').onclick=async()=>{try{await navigator.clipboard.writeText(msg);toast('Mensagem copiada ✅')}catch(e){toast('Não consegui copiar')}};
     }catch(e){m.textContent=e.message||'Erro ao calcular.'}
     b.disabled=false;b.textContent='Calcular'};
+}
+
+/* ---------- escolher o local no mapa ---------- */
+function carregaLeaflet(){
+  if(window.L)return Promise.resolve();
+  return new Promise((ok,no)=>{const c=document.createElement('link');c.rel='stylesheet';c.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';document.head.append(c);
+    const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';s.onload=ok;s.onerror=()=>no(new Error('Não consegui abrir o mapa. Confira a internet.'));document.head.append(s)})}
+async function escolherNoMapa(inicio,aoEscolher){
+  try{await carregaLeaflet()}catch(e){toast(e.message);return}
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:#fff;display:flex;flex-direction:column';
+  ov.innerHTML=`<div style="padding:calc(10px + env(safe-area-inset-top,0px)) 12px 8px;display:flex;gap:8px;align-items:center;border-bottom:1px solid #ddd"><b style="flex:1">Toque no local exato da entrega</b><button class="btn small ghost" id="mpsat">🛰️ Satélite</button><button class="btn small ghost" id="mpx">Fechar</button></div><div id="mpm" style="flex:1"></div><div style="padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid #ddd"><div class="muted" id="mpinfo" style="margin-bottom:8px">Arraste o mapa e dê zoom até achar a casa. Depois toque no ponto.</div><button class="btn block" id="mpok" disabled>Usar este local</button></div>`;
+  document.body.append(ov);
+  const c0=inicio||BIAS||{lat:-22.879,lon:-42.019};
+  const map=L.map(ov.querySelector('#mpm'),{zoomControl:true}).setView([c0.lat,c0.lon],inicio?17:14);
+  const rua=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'© Esri'});
+  let satOn=false,pin=null,pt=null;
+  ov.querySelector('#mpsat').onclick=e=>{satOn=!satOn;if(satOn){map.removeLayer(rua);sat.addTo(map)}else{map.removeLayer(sat);rua.addTo(map)}e.target.textContent=satOn?'🗺️ Mapa':'🛰️ Satélite'};
+  const fechar=()=>{map.remove();ov.remove()};
+  ov.querySelector('#mpx').onclick=fechar;
+  map.on('click',e=>{pt={lat:e.latlng.lat,lon:e.latlng.lng};if(pin)pin.setLatLng(e.latlng);else pin=L.marker(e.latlng).addTo(map);ov.querySelector('#mpok').disabled=false;ov.querySelector('#mpinfo').textContent='Local marcado. Se precisar, toque em outro ponto para corrigir.'});
+  ov.querySelector('#mpok').onclick=()=>{if(!pt)return;fechar();aoEscolher(pt)};
+  setTimeout(()=>map.invalidateSize(),200);
 }
 
 /* ---------- fornecedores e pedidos ao fornecedor ---------- */
