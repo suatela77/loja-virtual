@@ -665,7 +665,7 @@ function drawAdmin(){
   <button class="chip ${adm.tab==='config'?'on':''}" data-t="config">⚙️ Loja</button>
   <button class="chip" id="so">Sair</button></div>
   <div class="stats"><div class="stat"><b>${pend}</b>pedidos novos</div><div class="stat"><b>${adm.pedidos.length}</b>pedidos</div><div class="stat"><b>${prods.length}</b>produtos</div></div><div id="ad"></div></div>`;
-  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{adm.tab=b.dataset.t;adm.edit=null;adm.ext=null;adm.np=null;adm.cedit=null;adm.nc=null;adm.fedit=null;drawAdmin()});
+  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{adm.tab=b.dataset.t;adm.edit=null;adm.ext=null;adm.pay=null;adm.np=null;adm.cedit=null;adm.nc=null;adm.fedit=null;drawAdmin()});
   $('#so').onclick=sair;
   ({pedidos:aPedidos,clientes:aClientes,produtos:aProdutos,cupons:aCupons,forn:aForn,frete:aFrete,config:aConfig})[adm.tab]();
 }
@@ -682,7 +682,7 @@ function snapItens(itens){const its=(itens||[]).filter(i=>i.id);if(!its.length)r
   const dsc=(itens||[]).filter(i=>!i.id&&/^desconto/i.test(String(i.nome))).reduce((t,i)=>t+i.preco*i.qtd,0);const rec=its.reduce((t,i)=>t+i.preco*i.qtd,0)+dsc;return{custo_total:R2(custo),lucro:R2(rec-custo)}}
 async function patchPed(id,json){
   try{await api('/rest/v1/loja_pedidos?id=eq.'+id,{method:'PATCH',json})}
-  catch(e){if(/column|schema cache/i.test(e.message)){const j={...json};delete j.lucro;delete j.custo_total;delete j.arquivado;delete j.pago_valor;delete j.pago_em;
+  catch(e){if(/column|schema cache/i.test(e.message)){const j={...json};delete j.lucro;delete j.custo_total;delete j.arquivado;delete j.pago_valor;delete j.pago_em;delete j.pagamentos;
       if(Object.keys(j).length)return api('/rest/v1/loja_pedidos?id=eq.'+id,{method:'PATCH',json:j});
       throw new Error('Falta rodar o comando novo no Supabase (colunas de arquivo e lucro).')}
     throw e}}
@@ -721,6 +721,34 @@ function backup(){const d=new Date().toISOString().slice(0,10);
   baixar('pedidos-'+d+'.csv',[['Codigo','Data','Cliente','Telefone','Endereco','Situacao','Itens','Total','Pago','Lucro','Observacao']].concat(adm.pedidos.map(p=>[p.codigo,new Date(p.created_at).toLocaleString('pt-BR'),p.cliente_nome,p.cliente_tel,p.endereco,(STATUS[p.status]||[p.status])[0],(p.itens||[]).map(i=>i.qtd+'x '+i.nome+' ('+i.preco+')').join(' | '),String(p.total).replace('.',','),p.pago_valor==null?'':String(p.pago_valor).replace('.',','),p.lucro==null?'':String(p.lucro).replace('.',','),p.obs])));
   setTimeout(()=>baixar('clientes-'+d+'.csv',[['Nome','Telefone','Endereco']].concat(adm.clientes.map(c=>[c.nome,c.tel,c.endereco]))),700);
   setTimeout(()=>baixar('produtos-'+d+'.csv',[['Produto','Preco varejo','Preco atacado','Custo','Estoque','Ativo']].concat(prods.map(p=>[p.nome,String(p.preco).replace('.',','),p.preco_atacado==null?'':String(p.preco_atacado).replace('.',','),adm.custos[p.id]==null?'':String(adm.custos[p.id]).replace('.',','),p.estoque==null?'':p.estoque,p.ativo?'sim':'nao']))),1400)}
+const DIAS_PARADO=2;
+function paradosHtml(){const lim=Date.now()-DIAS_PARADO*864e5;
+  const l=adm.pedidos.filter(p=>!p.arquivado&&p.status==='aguardando_pagamento'&&new Date(p.created_at).getTime()<lim&&aReceber(p)>0).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  if(!l.length)return '';
+  return `<details class="box" style="background:linear-gradient(135deg,#fff7ed,#fef3c7);padding:0;overflow:hidden;border:2px solid #fcd34d"><summary style="cursor:pointer;padding:14px 16px;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:18px;font-weight:900;color:#92400e;width:100%">⏰ PEDIDOS PARADOS</span><span style="font-weight:800;color:#fff;background:#d97706;border-radius:999px;padding:3px 10px;font-size:13px">${l.length} sem pagamento há mais de ${DIAS_PARADO} dias</span><span style="margin-left:auto;font-weight:800;color:#92400e;font-size:13px">VER ▾</span></summary>
+  <div style="padding:2px 16px 12px"><p class="muted" style="font-size:13px;margin:4px 0">Esses pedidos estão segurando produtos no estoque. Cobre o cliente ou cancele (o estoque volta).</p>${l.map(p=>{const d=Math.floor((Date.now()-new Date(p.created_at))/864e5);return `<div style="padding:10px 0;border-top:1px solid #fcd34d"><div style="font-weight:800;color:#3b1d4a">${h(p.cliente_nome)}</div><div class="muted" style="font-size:13px">Pedido ${h(p.codigo)} · ${dbr(p.created_at)} · há ${d} dias · <b>${brl(aReceber(p))}</b></div><div style="display:flex;gap:6px;margin-top:6px"><button class="btn small" style="background:#d97706;flex:1" data-cb="${p.id}">📣 Cobrar</button><button class="btn small" style="background:#e11d48;flex:1" data-cx="${p.id}">❌ Cancelar</button></div></div>`}).join('')}</div></details>`}
+function pagLista(p){if(Array.isArray(p.pagamentos))return p.pagamentos.map(x=>({v:Number(x.v)||0,em:x.em||null}));
+  return p.pago_valor!=null&&Number(p.pago_valor)>0?[{v:Number(p.pago_valor),em:p.pago_em||null,ant:true}]:[]}
+function pagHtml(p){const l=pagLista(p);const pago=R2(l.reduce((t,x)=>t+x.v,0));const t=Number(p.total)||0;const falta=Math.max(0,R2(t-pago));
+  return `<div class="box" id="pay-${p.id}" style="background:#f0fdfa;border:2px solid #5eead4;margin-top:10px"><b>💵 Pagamentos</b>
+  ${l.length?l.map((x,k)=>`<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px dashed #99f6e4"><div><b>${brl(x.v)}</b><div class="muted" style="font-size:13px">${x.em?dbr(x.em):(x.ant?'lançado antes (sem data)':'sem data')}</div></div><button class="btn small" style="background:#e53935" data-pgd="${k}" aria-label="Apagar pagamento">🗑️</button></div>`).join(''):'<p class="muted">Nenhum pagamento lançado ainda.</p>'}
+  <div style="border-top:2px solid #5eead4;padding-top:8px;margin-top:4px">Pago: <b>${brl(pago)}</b> de ${brl(t)} · ${pago>t+0.005?`<b style="color:#e11d48">⚠️ a mais ${brl(pago-t)}</b>`:falta>0?`<b style="color:#b45309">Falta ${brl(falta)}</b>`:'<b style="color:#166534">Quitado ✅</b>'}</div>
+  <div class="row" style="gap:8px;margin-top:8px"><div class="grow"><label for="pgv">Valor (R$)</label><input class="f" id="pgv" inputmode="decimal" value="${falta>0?String(falta).replace('.',','):''}"></div><div class="grow"><label for="pgdt">Data</label><input class="f" id="pgdt" type="date" value="${ymd(new Date())}"></div></div>
+  <p></p><button class="btn block" style="background:#0d9488" id="pgadd">+ Lançar pagamento</button></div>`}
+async function salvarPag(p,l){const pago=R2(l.reduce((t,x)=>t+x.v,0));const t=Number(p.total)||0;const quit=l.length>0&&pago>=t-0.005;
+  const upd={pagamentos:l.map(x=>({v:R2(x.v),em:x.em})),pago_valor:l.length?pago:null};
+  if(quit&&(p.status==='aguardando_pagamento'||p.status==='comprovante_enviado')){upd.status='pago';Object.assign(upd,snapItens(p.itens))}
+  if(quit&&!p.pago_em){const ult=l.filter(x=>x.em).map(x=>x.em).sort().pop();upd.pago_em=ult||new Date().toISOString()}
+  try{await api('/rest/v1/loja_pedidos?id=eq.'+p.id,{method:'PATCH',json:upd})}
+  catch(e){if(/pagamentos/i.test(e.message))throw new Error('Falta rodar o comando novo no Supabase (histórico de pagamentos).');throw e}
+  Object.assign(p,upd);return quit}
+function ligarPag(id){const p=adm.pedidos.find(x=>x.id===id);if(!p||!$('#pgadd'))return;
+  $('#pgadd').onclick=async()=>{const v=parseFloat(String($('#pgv').value).replace(',','.'));if(isNaN(v)||v<=0){toast('Digite o valor pago');return}
+    const d=$('#pgdt').value;const l=pagLista(p);l.push({v,em:d?ymdISO(d):new Date().toISOString()});
+    $('#pgadd').disabled=true;try{const q=await salvarPag(p,l);toast(q?'Pedido quitado ✅':'Pagamento lançado 💵');aPedidos()}catch(e){toast(e.message);$('#pgadd').disabled=false}};
+  document.querySelectorAll('[data-pgd]').forEach(b=>b.onclick=async()=>{const l=pagLista(p);const x=l[+b.dataset.pgd];if(!x||!confirm('Apagar o pagamento de '+brl(x.v)+(x.em?' ('+dbr(x.em)+')':'')+'?'))return;
+    l.splice(+b.dataset.pgd,1);try{await salvarPag(p,l);toast('Pagamento apagado');aPedidos()}catch(e){toast(e.message)}});
+}
 function aPedidos(){
   if(adm.np)return aPedidoForm();
   const card=p=>{const st=STATUS[p.status]||[p.status,'#999'];const at=/^\[ATACADO\]/.test(p.obs||'');const ob=(p.obs||'').replace(/^\[ATACADO\]\s*/,'');
@@ -730,32 +758,24 @@ function aPedidos(){
   <div class="pn">${h(p.cliente_nome)}</div>
   <div class="muted">🛒 Compra: <b>${dbr(p.created_at)}</b>${p.pago_em?` · 💵 Pago em: <b>${dbr(p.pago_em)}</b>`:''}</div><div class="muted">📞 ${h(p.cliente_tel)}</div>
   <ul class="pit">${p.itens.map(i=>`<li><span class="q">${i.qtd}×</span><span class="n">${h(String(i.nome).toUpperCase())}<small>${brl(i.preco)} cada</small></span><span class="v">${brl(i.preco*i.qtd)}</span></li>`).join('')}</ul>
-  <div class="ptot"><span>Total</span><b>${brl(p.total)}</b></div>${lucroLinha(p)}${recLinha(p)}
+  <div class="ptot"><span>Total</span><b>${brl(p.total)}</b></div>${lucroLinha(p)}${recLinha(p)}${adm.pay===p.id?pagHtml(p):''}
   ${p.endereco?`<div class="muted pad">📍 ${h(p.endereco)}</div>`:''}${ob?`<div class="muted pad">📝 ${h(ob)}</div>`:''}
   ${p.comprovante_url?`<p><a href="${h(p.comprovante_url)}" target="_blank"><img src="${h(p.comprovante_url)}" style="max-width:140px;border-radius:12px" alt="comprovante"></a></p>`:''}
   <select class="f" data-s="${p.id}">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===p.status?'selected':''}>${v[0]}</option>`).join('')}</select>
-  <div class="pbt"><button class="btn small" style="background:#f59e0b" data-ed="${p.id}">✏️ Editar</button><a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a><a class="btn small green" href="${wa}">WhatsApp</a>${p.endereco?`<a class="btn small" style="background:#33ccff;color:#05324a" target="_blank" rel="noopener" href="${wazeUrl(p.endereco)}">🧭 Waze</a>`:''}<button class="btn small" style="background:#0d9488" data-rp="${p.id}">💵 Pagamento</button>${aReceber(p)>0?`<button class="btn small" style="background:#d97706" data-cb="${p.id}">📣 Cobrar</button>`:''}<button class="btn small ghost" data-ar="${p.id}">${p.arquivado?'↩️ Desarquivar':'📁 Arquivar'}</button><button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button></div>
+  <div class="pbt"><button class="btn small" style="background:#f59e0b" data-ed="${p.id}">✏️ Editar</button><a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a><a class="btn small green" href="${wa}">WhatsApp</a>${p.endereco?`<a class="btn small" style="background:#33ccff;color:#05324a" target="_blank" rel="noopener" href="${wazeUrl(p.endereco)}">🧭 Waze</a>`:''}<button class="btn small" style="background:#0d9488" data-rp="${p.id}">💵 Pagamento${adm.pay===p.id?' ▴':''}</button>${aReceber(p)>0?`<button class="btn small" style="background:#d97706" data-cb="${p.id}">📣 Cobrar</button>`:''}<button class="btn small ghost" data-ar="${p.id}">${p.arquivado?'↩️ Desarquivar':'📁 Arquivar'}</button><button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button></div>
   <button class="btn block" style="margin-top:10px;background:linear-gradient(90deg,#16a34a,#22c55e)" data-eta="${p.id}">🚚 Avisar: pedido a caminho</button><div class="eta" id="eta-${p.id}"></div></div>`};
   const arq=adm.pv==='arq';const lista=adm.pedidos.filter(p=>!!p.arquivado===arq);const nArq=adm.pedidos.filter(p=>p.arquivado).length;
   const conc=adm.pedidos.filter(p=>!p.arquivado&&(p.status==='enviado'||p.status==='cancelado'));
-  $('#ad').innerHTML=`<button class="btn block" id="npd">+ Novo pedido (manual)</button><p></p>`+estoqueBaixoHtml()+visitasHtml()+resumoHtml()+`<div style="margin:12px 0"><button class="chip ${arq?'':'on'}" data-pv="ativos">Em andamento (${adm.pedidos.length-nArq})</button><button class="chip ${arq?'on':''}" data-pv="arq">📁 Arquivados (${nArq})</button></div>`
+  $('#ad').innerHTML=`<button class="btn block" id="npd">+ Novo pedido (manual)</button><p></p>`+paradosHtml()+estoqueBaixoHtml()+visitasHtml()+resumoHtml()+`<div style="margin:12px 0"><button class="chip ${arq?'':'on'}" data-pv="ativos">Em andamento (${adm.pedidos.length-nArq})</button><button class="chip ${arq?'on':''}" data-pv="arq">📁 Arquivados (${nArq})</button></div>`
    +(!arq&&conc.length?`<button class="btn block ghost" id="arall">📁 Arquivar os ${conc.length} já entregues/cancelados</button><p></p>`:'')
    +(lista.length?lista.map(card).join(''):`<div class="empty"><div class="big">${arq?'📁':'📭'}</div><h2>${arq?'Nenhum pedido arquivado':'Nenhum pedido em andamento'}</h2></div>`);
   document.querySelectorAll('[data-pv]').forEach(b=>b.onclick=()=>{adm.pv=b.dataset.pv;aPedidos()});
   document.querySelectorAll('[data-per]').forEach(b=>b.onclick=()=>{adm.per=b.dataset.per;aPedidos()});
   document.querySelectorAll('[data-ar]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.ar);if(!p)return;try{await patchPed(p.id,{arquivado:!p.arquivado});p.arquivado=!p.arquivado;toast(p.arquivado?'Pedido arquivado 📁':'Pedido voltou para a lista');aPedidos()}catch(e){toast(e.message)}});
-  document.querySelectorAll('[data-rp]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.rp);if(!p)return;
-    if(p.pago_valor!=null&&aReceber(p)<=0){const t=Number(p.total)||0;
-      const r2=prompt('Este pedido já está quitado.\nTotal do pedido: '+brl(t)+'\nPago registrado: '+brl(Number(p.pago_valor)||0)+'\n\nCorrigir: quanto o cliente pagou NO TOTAL? (R$)',String(t).replace('.',','));if(r2===null)return;
-      const v2=parseFloat(String(r2).replace(',','.'));if(isNaN(v2)||v2<0){toast('Valor inválido');return}
-      try{await patchPed(p.id,{pago_valor:R2(v2)});p.pago_valor=R2(v2);toast('Pagamento corrigido ✅');aPedidos()}catch(e){toast(e.message)}return}
-    const falta=aReceber(p)||Number(p.total);
-    const r=prompt('Quanto o cliente pagou AGORA? (R$)\nFalta: '+brl(falta)+'\n(digite 0 para marcar como fiado, sem pagamento ainda)',String(falta).replace('.',','));if(r===null)return;
-    const v=parseFloat(String(r).replace(',','.'));if(isNaN(v)||v<0){toast('Valor inválido');return}
-    const novo=R2((Number(p.pago_valor)||0)+v);const quit=novo>=Number(p.total)-0.005;const upd={pago_valor:novo};
-    if(quit&&(p.status==='aguardando_pagamento'||p.status==='comprovante_enviado')){upd.status='pago';Object.assign(upd,snapItens(p.itens))}
-    if(quit&&!p.pago_em)upd.pago_em=new Date().toISOString();
-    try{await patchPed(p.id,upd);Object.assign(p,upd);toast(quit?'Pedido quitado ✅':'Pagamento registrado 💵');aPedidos()}catch(e){toast(e.message)}});
+  document.querySelectorAll('[data-rp]').forEach(b=>b.onclick=()=>{adm.pay=adm.pay===b.dataset.rp?null:b.dataset.rp;aPedidos();const el=document.getElementById('pay-'+b.dataset.rp);if(el)el.scrollIntoView({block:'center'})});
+  if(adm.pay)ligarPag(adm.pay);
+  document.querySelectorAll('[data-cx]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.cx);if(!p||!confirm('Cancelar o pedido '+p.codigo+' de '+p.cliente_nome+'?\nOs produtos voltam para o estoque.'))return;
+    try{await patchPed(p.id,{status:'cancelado'});p.status='cancelado';toast('Pedido cancelado ✅');drawAdmin()}catch(e){toast(e.message)}});
   document.querySelectorAll('[data-cb]').forEach(b=>b.onclick=()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.cb);if(!p)return;const f=aReceber(p);
     const msg=`Olá, ${p.cliente_nome}! 😊 Passando para lembrar do seu pedido ${p.codigo} na ${cfg.nome}. ${f<Number(p.total)?`Falta pagar ${brl(f)} (total ${brl(p.total)}).`:`Valor: ${brl(f)}.`}${cfg.pix_chave?`\n\nPix: ${cfg.pix_chave}${cfg.pix_nome?' ('+cfg.pix_nome+')':''}`:''}\n\nSe você já pagou, me envie o comprovante, por favor! 🙏`;
     const num='55'+String(p.cliente_tel||'').replace(/\D/g,'').replace(/^55/,'');window.open('https://wa.me/'+num+'?text='+encodeURIComponent(msg),'_blank')});
