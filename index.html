@@ -295,9 +295,11 @@ function shrink(file,max=1100){return new Promise((ok,no)=>{
   im.onerror=()=>no(new Error('Não consegui ler a imagem'));im.src=u})}
 
 function saveCart(){ls.set('loja_cart',cart);$('#cnt').textContent=cart.reduce((a,i)=>a+i.qtd,0)}
-function addCart(id,q=1){const i=cart.find(x=>x.id===id);i?i.qtd+=q:cart.push({id,qtd:q});saveCart();toast('Adicionado ao carrinho! 🛍️')}
+function addCart(id,q=1){if(!noCat(prod(id))){toast('Produto fora do catálogo de atacado');return}const i=cart.find(x=>x.id===id);i?i.qtd+=q:cart.push({id,qtd:q});saveCart();toast('Adicionado ao carrinho! 🛍️')}
 const prod=id=>prods.find(p=>p.id===id);
 let ATAC=!!ls.get('loja_atac',false);
+const temAtac=p=>!!p&&p.preco_atacado!=null&&Number(p.preco_atacado)>0;
+const noCat=p=>!ATAC||temAtac(p);
 const pv=p=>{if(!p)return 0;const a=Number(p.preco_atacado);return ATAC&&p.preco_atacado!=null&&a>0?a:Number(p.preco)};
 const cartTotal=()=>cart.reduce((a,i)=>a+pv(prod(i.id))*i.qtd,0);
 const foto=p=>p.imagens&&p.imagens[0];
@@ -328,7 +330,7 @@ function waLink(texto){const n=(cfg.whatsapp||'').replace(/\D/g,'');const num=n.
 
 /* ---------- vitrine ---------- */
 function vHome(){
-  const ativos=prods.filter(p=>p.ativo);
+  const ativos=prods.filter(p=>p.ativo&&noCat(p));
   const cm={};ativos.forEach(p=>{const c=catOf(p),k=catKey(c);if(!cm[k])cm[k]=c});const cats=Object.values(cm).sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
   let lista=ativos.filter(p=>(!cat||catKey(catOf(p))===catKey(cat))&&(!busca||(p.nome+' '+p.descricao).toLowerCase().includes(busca.toLowerCase())));
   $('#app').innerHTML=`${cfg.aviso?`<div class="aviso">${h(cfg.aviso)}</div>`:''}
@@ -347,7 +349,7 @@ function card(p,i){const c=COLORS[i%COLORS.length];
   return `<div class="pcard" style="--c:${c}"><a href="#/produto/${p.id}"><div class="pimg">${foto(p)?`<img loading="lazy" src="${h(foto(p))}" alt="${h(p.nome)}">`:emoji[i%emoji.length]}${p.estoque===0?'<i>Esgotado</i>':''}</div></a><div class="pbody"><a href="#/produto/${p.id}"><h3>${nb(p.nome)}</h3></a><div class="pbuy"><span class="price">${brl(pv(p))}</span>${p.estoque===0?'':`<button data-add="${p.id}" aria-label="Adicionar ao carrinho"><span>Comprar</span></button>`}</div></div></div>`}
 
 function vProduto(id){
-  const p=prod(id);if(!p){location.hash='#/';return}
+  const p=prod(id);if(!p||!noCat(p)){location.hash='#/';return}
   $('#app').innerHTML=`<div class="wrap"><p><a href="#/">← Voltar</a></p>
   ${p.imagens?.length?`<div class="gal">${p.imagens.map(u=>`<img src="${h(u)}" alt="">`).join('')}</div>`:`<div class="box empty"><div class="big">🎁</div></div>`}
   <div class="box"><h1>${h(p.nome)}</h1><div class="price" style="font-size:32px;margin:8px 0">${brl(pv(p))}</div>${ATAC&&pv(p)<Number(p.preco)?`<div class="muted">Varejo: <s>${brl(p.preco)}</s> · preço de atacado</div>`:''}
@@ -525,7 +527,7 @@ function freteUI(){
   const t=$('#tt');if(t)t.textContent=brl(Math.max(0,cartTotal()+freteVal()-cupVal()));
   const l=$('#tfr');if(l)l.innerHTML=fr?`<div class="row"><span class="grow">${fr.tipo==='retirada'?'Retirada':'Frete'}</span><b>${fr.tipo==='retirada'?'Grátis':brl(fr.valor)}</b></div>`:''}
 function vCarrinho(){
-  cart=cart.filter(i=>prod(i.id));saveCart();
+  {const n0=cart.length;cart=cart.filter(i=>prod(i.id)&&noCat(prod(i.id)));saveCart();if(cart.length<n0&&ATAC)setTimeout(()=>toast('Tirei do carrinho o que não é vendido no atacado'),300)}
   if(!cart.length){$('#app').innerHTML=`<div class="wrap empty"><div class="big">🛒</div><h2>Seu carrinho está vazio</h2><p class="muted">Escolha algo lindo na vitrine!</p><a class="btn" href="#/">Ver produtos</a></div>`;return}
   const me=ls.get('loja_cli',{});
   $('#app').innerHTML=`<div class="wrap"><h2 style="margin:16px 0">Seu carrinho 🛒</h2>
@@ -1316,7 +1318,7 @@ function aConfig(){
   <label for="cpn">Nome do recebedor</label><input class="f" id="cpn" value="${h(cfg.pix_nome)}">
   <label for="cpi">Cidade</label><input class="f" id="cpi" value="${h(cfg.pix_cidade)}">
   <p></p><button class="btn block" id="cs">Salvar</button></div>
-  <div class="box" style="background:#eff6ff"><h3>🏪 Catálogo de atacado</h3><p class="muted">Mande este link para os lojistas. Eles veem os <b>preços de atacado</b> e fazem o pedido pelo site (o pedido chega marcado como ATACADO). Produto sem preço de atacado aparece com o preço normal.</p>
+  <div class="box" style="background:#eff6ff"><h3>🏪 Catálogo de atacado</h3><p class="muted">Mande este link para os lojistas. Eles veem os <b>preços de atacado</b> e fazem o pedido pelo site (o pedido chega marcado como ATACADO). Só aparecem os produtos com <b>preço de atacado</b> preenchido (${prods.filter(p=>p.ativo&&temAtac(p)).length} de ${prods.filter(p=>p.ativo).length} produtos da loja).</p>
   <input class="f" readonly value="${h(location.origin+'/#/atacado')}" onclick="this.select()"><p></p>
   <div class="row" style="gap:8px"><button class="btn grow" id="atcp">📋 Copiar link</button><a class="btn grow green" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('Olá! Este é o catálogo de ATACADO da '+cfg.nome+', com os preços para lojistas: '+location.origin+'/#/atacado')}">📲 Mandar no WhatsApp</a></div></div>
   <div class="box"><h3>💾 Backup</h3><p class="muted">Baixa 3 planilhas (pedidos, clientes e produtos) para guardar no celular. Faça de vez em quando.</p><button class="btn block violet" id="bkp">Baixar backup (planilhas)</button>
