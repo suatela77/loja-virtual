@@ -665,7 +665,7 @@ function drawAdmin(){
   <button class="chip ${adm.tab==='config'?'on':''}" data-t="config">⚙️ Loja</button>
   <button class="chip" id="so">Sair</button></div>
   <div class="stats"><div class="stat"><b>${pend}</b>pedidos novos</div><div class="stat"><b>${adm.pedidos.length}</b>pedidos</div><div class="stat"><b>${prods.length}</b>produtos</div></div><div id="ad"></div></div>`;
-  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{adm.tab=b.dataset.t;adm.edit=null;adm.np=null;adm.cedit=null;adm.nc=null;adm.fedit=null;drawAdmin()});
+  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{adm.tab=b.dataset.t;adm.edit=null;adm.ext=null;adm.np=null;adm.cedit=null;adm.nc=null;adm.fedit=null;drawAdmin()});
   $('#so').onclick=sair;
   ({pedidos:aPedidos,clientes:aClientes,produtos:aProdutos,cupons:aCupons,forn:aForn,frete:aFrete,config:aConfig})[adm.tab]();
 }
@@ -881,17 +881,94 @@ const fmtp=x=>(Math.round(x*10)/10).toString().replace('.',',')+'%';
 function lucroTxt(v,c){if(!(c>0)||!(v>0))return '';const l=v-c;return `${brl(l)} de lucro · <b>${fmtp(pct(v,c))}</b> sobre a compra (margem ${fmtp(l/v*100)})`}
 function aProdutos(){
   if(adm.edit){return aForm()}
+  if(adm.ext){return aExtrato()}
   const q=(adm.pq||'').trim().toLowerCase();const lst=prods.filter(p=>!q||String(p.nome).toLowerCase().includes(q));
   const cel=(t,v,c,cor)=>{const ok=v>0&&c>0;return `<div class="pc"><span>${t}</span><b>${v>0?brl(v):'—'}</b>${ok?`<em style="color:${cor}">+${fmtp(pct(v,c))}<small>${brl(v-c)} por peça</small></em>`:'<em class="muted">&nbsp;</em>'}</div>`};
   $('#ad').innerHTML=`<button class="btn block" id="np">+ Novo produto</button><input class="f" id="pq" placeholder="🔍 Buscar produto…" value="${h(adm.pq||'')}" style="margin:10px 0">`+(lst.length?lst.map(p=>{const c=adm.custos[p.id];const e=p.estoque;
     const est=e==null?'':e===0?'<span class="eb" style="background:#e11d48">Esgotado</span>':e<=2?`<span class="eb" style="background:#f59e0b">Estoque ${e} · baixo</span>`:`<span class="eb" style="background:#16a34a">Estoque ${e}</span>`;
     return `<div class="box prd"><div class="row"><div class="th">${foto(p)?`<img src="${h(foto(p))}" alt="">`:'🎁'}</div><div class="grow"><b class="prn">${h(p.nome)}</b><div>${est}${p.ativo?'':'<span class="eb" style="background:#64748b">🙈 oculto</span>'}</div></div></div>
     <div class="pg">${cel('Varejo',p.preco,c,'#166534')}${cel('Atacado',p.preco_atacado,c,'#0369a1')}<div class="pc"><span>Compra</span><b>${c>0?brl(c):'—'}</b><em class="muted">&nbsp;</em></div></div>
-    <div class="pbt"><button class="btn small" data-e="${p.id}" style="flex:1">✏️ Editar</button><button class="btn small" style="background:#e53935" data-dp="${p.id}">🗑️</button></div></div>`}).join(''):'<div class="empty"><h2>Nada encontrado</h2></div>');
+    <div class="pbt"><button class="btn small" data-e="${p.id}" style="flex:1">✏️ Editar</button><button class="btn small violet" data-ex="${p.id}">📜 Extrato</button><button class="btn small" style="background:#e53935" data-dp="${p.id}">🗑️</button></div></div>`}).join(''):'<div class="empty"><h2>Nada encontrado</h2></div>');
   $('#pq').oninput=e=>{adm.pq=e.target.value;const pos=e.target.selectionStart;aProdutos();const n=$('#pq');n.focus();n.setSelectionRange(pos,pos)};
   $('#np').onclick=()=>{adm.edit={nome:'',descricao:'',preco:'',custo:'',categoria:'',imagens:[],estoque:null,ativo:true};adm.files=[];aProdutos()};
   document.querySelectorAll('[data-dp]').forEach(b=>b.onclick=async()=>{const p=prod(b.dataset.dp);if(!p||!confirm('Excluir o produto "'+p.nome+'"? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'DELETE'});prods=prods.filter(x=>x.id!==p.id);toast('Produto excluído');aProdutos()}catch(e){toast(e.message)}});
+  document.querySelectorAll('[data-ex]').forEach(b=>b.onclick=()=>{adm.ext=b.dataset.ex;scrollTo(0,0);aProdutos()});
   document.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{adm.edit=JSON.parse(JSON.stringify(prod(b.dataset.e)));adm.edit.custo=adm.custos[b.dataset.e]??'';adm.files=[];aProdutos()});
+}
+const SQL_EXTRATO=`-- EXTRATO DE ESTOQUE (Casa do Barro) - pode rodar mais de uma vez sem problema
+create table if not exists public.loja_estoque_log(
+  id bigserial primary key,
+  produto_id text not null,
+  antes integer,
+  depois integer,
+  automatico boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists loja_estoque_log_prod on public.loja_estoque_log(produto_id, created_at desc);
+alter table public.loja_estoque_log enable row level security;
+
+create or replace function public.loja_estoque_log_fn() returns trigger
+language plpgsql security definer set search_path=public as $f$
+begin
+  if new.estoque is distinct from old.estoque then
+    insert into public.loja_estoque_log(produto_id, antes, depois, automatico)
+    values (new.id::text, old.estoque, new.estoque, pg_trigger_depth() > 1);
+  end if;
+  return new;
+end $f$;
+
+drop trigger if exists loja_estoque_log_trg on public.loja_produtos;
+create trigger loja_estoque_log_trg after update of estoque on public.loja_produtos
+for each row execute function public.loja_estoque_log_fn();
+
+-- quem pode ler o extrato: as mesmas regras de leitura da tabela de custos (so o admin)
+do $d$
+declare q text;
+begin
+  drop policy if exists loja_estoque_log_ler on public.loja_estoque_log;
+  select qual into q from pg_policies where schemaname='public' and tablename='loja_custos' and cmd in ('SELECT','ALL') and qual is not null limit 1;
+  if q is null then q := 'auth.uid() is not null'; end if;
+  execute format('create policy loja_estoque_log_ler on public.loja_estoque_log for select to authenticated using (%s)', q);
+end $d$;
+grant select on public.loja_estoque_log to authenticated;
+notify pgrst, 'reload schema';`;
+async function aExtrato(){
+  const p=prod(adm.ext);if(!p){adm.ext=null;return aProdutos()}
+  const id=String(p.id);
+  $('#ad').innerHTML='<div class="box"><p class="muted">Carregando extrato…</p></div>';
+  if(!adm.compras)await loadForn().catch(()=>{});
+  let log=null;try{log=await api('/rest/v1/loja_estoque_log?produto_id=eq.'+encodeURIComponent(id)+'&order=created_at.desc&limit=300')}catch(e){log=null}
+  if(adm.ext!==id)return;
+  const dt=v=>new Date(v).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const temItem=x=>(x.itens||[]).filter(i=>String(i.id)===id);
+  const qtdDe=x=>temItem(x).reduce((t,i)=>t+Number(i.qtd||0),0);
+  const peds=adm.pedidos.filter(x=>qtdDe(x)>0);
+  const comps=(adm.compras||[]).filter(c=>(c.itens||[]).some(i=>String(i.pid)===id));
+  const qc=c=>(c.itens||[]).filter(i=>String(i.pid)===id).reduce((t,i)=>t+Number(i.qtd||0),0);
+  const vend=peds.filter(x=>x.status!=='cancelado').reduce((t,x)=>t+qtdDe(x),0);
+  const receb=comps.filter(c=>c.status==='recebido').reduce((t,c)=>t+qc(c),0);
+  const e=p.estoque;
+  const saldo=e==null?'<span class="muted">Sem controle de estoque</span>':`<b style="font-size:28px;color:${e===0?'#e11d48':e<=2?'#f59e0b':'#16a34a'}">${e} un.</b>`;
+  const perto=(a,b,s)=>Math.abs(new Date(a)-new Date(b))<=s*1000;
+  const linhaLog=l=>{const d=(l.depois??0)-(l.antes??0);let mot,ped=null;
+    const pp=peds.find(x=>perto(x.created_at,l.created_at,180));
+    if(l.automatico||(pp&&d<0)){ped=pp;mot=d<0?'🛒 Baixa automática (pedido)':'↩️ Volta automática (pedido cancelado, excluído ou editado)'}
+    else{const c=comps.find(c=>c.recebido_em&&perto(c.recebido_em,l.created_at,180));mot=c?'🏭 Chegou do fornecedor':'✏️ Ajuste manual (editar produto)'}
+    return `<div style="display:flex;gap:10px;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px dashed #cbb"><div><div style="font-weight:800">${mot}</div><div class="muted" style="font-size:13px">${dt(l.created_at)}${ped?` · pedido ${h(ped.codigo)} · ${h(ped.cliente_nome)}`:''}</div><div class="muted" style="font-size:13px">${l.antes??'—'} ➜ ${l.depois??'—'}</div></div><b style="white-space:nowrap;color:#fff;border-radius:10px;padding:4px 10px;background:${d<0?'#e11d48':'#16a34a'}">${d>0?'+':''}${d}</b></div>`};
+  const logHtml=log===null?`<div class="box" style="background:#fef9c3;border:2px solid #eab308"><b>⚙️ Falta ligar o registro automático</b><p class="muted">Copie o comando abaixo e rode uma vez no Supabase (projeto casa-do-barro → SQL Editor → New query → colar → Run). A partir daí, toda entrada e saída do estoque fica anotada aqui, com data e hora.</p><button class="btn block" id="exsql">📋 Copiar comando</button></div>`
+    :`<div class="box"><b>✅ Registro automático</b> <span class="muted" style="font-size:12px">(toda mudança do estoque, com data e hora)</span>${log.length?log.map(linhaLog).join(''):'<p class="muted">Nenhuma mudança registrada ainda. O registro começa a contar a partir de quando o comando foi rodado no Supabase.</p>'}</div>`;
+  const stCor={aguardando_pagamento:'#ff8a00',comprovante_enviado:'#3b82f6',pago:'#16a34a',enviado:'#7c3aed',cancelado:'#e11d48'};
+  const pedHtml=peds.map(x=>{const q=qtdDe(x),can=x.status==='cancelado';return `<div style="display:flex;gap:10px;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px dashed #cbb"><div><div style="font-weight:800">${h(x.cliente_nome)}</div><div class="muted" style="font-size:13px">${dbr(x.created_at)} · pedido ${h(x.codigo)} · <span style="color:${stCor[x.status]||'#555'};font-weight:800">${h((STATUS[x.status]||[x.status])[0])}</span>${x.arquivado?' · 📁':''}</div></div><b style="white-space:nowrap;color:#fff;border-radius:10px;padding:4px 10px;background:${can?'#94a3b8':'#e11d48'}">${can?'0 (cancelado)':'−'+q}</b></div>`}).join('');
+  const compHtml=comps.map(c=>{const q=qc(c),ok=c.status==='recebido';return `<div style="display:flex;gap:10px;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px dashed #cbb"><div><div style="font-weight:800">🏭 Pedido ao fornecedor</div><div class="muted" style="font-size:13px">${dbr(c.recebido_em||c.created_at)} · ${ok?'chegou':'ainda não chegou'}</div></div><b style="white-space:nowrap;color:#fff;border-radius:10px;padding:4px 10px;background:${ok?'#16a34a':'#94a3b8'}">${ok?'+'+q:'0 (aguardando)'}</b></div>`}).join('');
+  $('#ad').innerHTML=`<button class="btn ghost block" id="exv">⬅️ Voltar aos produtos</button><p></p>
+  <div class="box"><h3 style="margin-top:0">📜 Extrato de estoque</h3><div style="font-weight:900">${h(p.nome)}</div><div style="margin-top:8px">Estoque agora: ${saldo}</div>
+  <div class="row" style="gap:8px;margin-top:10px"><div class="stat grow" style="background:#e11d48"><b>${vend}</b>vendidos (fora cancelados)</div><div class="stat grow" style="background:#16a34a"><b>${receb}</b>chegaram do fornecedor</div></div></div>
+  ${logHtml}
+  <div class="box"><b>🧾 Pedidos com este produto</b> <span class="muted" style="font-size:12px">(${peds.length})</span>${pedHtml||'<p class="muted">Nenhum pedido com este produto.</p>'}</div>
+  ${comps.length?`<div class="box"><b>🏭 Compras do fornecedor</b>${compHtml}</div>`:''}
+  <p class="muted" style="font-size:12px">Pedidos excluídos não aparecem na lista de pedidos, mas ficam no registro automático.</p>`;
+  $('#exv').onclick=()=>{adm.ext=null;aProdutos()};
+  if($('#exsql'))$('#exsql').onclick=async()=>{try{await navigator.clipboard.writeText(SQL_EXTRATO);toast('Comando copiado ✅')}catch(e){toast('Não consegui copiar')}};
 }
 function catOpts(cur){const m={};prods.forEach(x=>{const c=catNorm(x.categoria);if(c&&!m[catKey(c)])m[catKey(c)]=c});
   const c0=catNorm(cur);if(c0&&!m[catKey(c0)])m[catKey(c0)]=c0;
