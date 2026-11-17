@@ -706,7 +706,7 @@ function resumoHtml(){const now=new Date();const f=p=>{const d=new Date(p.create
 function aReceber(p){if(p.status==='cancelado')return 0;const t=Number(p.total)||0;const pg=p.pago_valor;
   if(pg==null&&(p.status==='pago'||p.status==='enviado'))return 0;return Math.max(0,R2(t-(Number(pg)||0)))}
 function recLinha(p){if(p.pago_valor==null)return '';const f=aReceber(p);
-  return `<div class="lucro" style="background:#fff7e6;color:#92400e">💵 Pago ${brl(Number(p.pago_valor)||0)} · ${f>0?`<b>Falta ${brl(f)}</b>`:'<b>Quitado ✅</b>'}</div>`}
+  return `<div class="lucro" style="background:#fff7e6;color:#92400e">💵 Pago ${brl(Number(p.pago_valor)||0)} · ${f>0?`<b>Falta ${brl(f)}</b>`:'<b>Quitado ✅</b>'}${p.status!=='cancelado'&&Number(p.pago_valor)>Number(p.total)+0.005?` <b style="color:#e11d48">· ⚠️ Pago a mais ${brl(Number(p.pago_valor)-Number(p.total))}</b>`:''}</div>`}
 function estoqueBaixoHtml(){const l=prods.filter(p=>p.ativo&&p.estoque!=null&&p.estoque<=2).sort((a,b)=>a.estoque-b.estoque||String(a.nome).localeCompare(b.nome,'pt-BR'));
   if(!l.length)return '';const z=l.filter(p=>p.estoque===0).length,bx=l.length-z;
   const pill=(n,t,c)=>n?`<span style="background:${c};color:#fff;font-weight:800;font-size:13px;border-radius:20px;padding:4px 12px;white-space:nowrap">${n} ${t}</span>`:'';
@@ -744,7 +744,12 @@ function aPedidos(){
   document.querySelectorAll('[data-pv]').forEach(b=>b.onclick=()=>{adm.pv=b.dataset.pv;aPedidos()});
   document.querySelectorAll('[data-per]').forEach(b=>b.onclick=()=>{adm.per=b.dataset.per;aPedidos()});
   document.querySelectorAll('[data-ar]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.ar);if(!p)return;try{await patchPed(p.id,{arquivado:!p.arquivado});p.arquivado=!p.arquivado;toast(p.arquivado?'Pedido arquivado 📁':'Pedido voltou para a lista');aPedidos()}catch(e){toast(e.message)}});
-  document.querySelectorAll('[data-rp]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.rp);if(!p)return;const falta=aReceber(p)||Number(p.total);
+  document.querySelectorAll('[data-rp]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.rp);if(!p)return;
+    if(p.pago_valor!=null&&aReceber(p)<=0){const t=Number(p.total)||0;
+      const r2=prompt('Este pedido já está quitado.\nTotal do pedido: '+brl(t)+'\nPago registrado: '+brl(Number(p.pago_valor)||0)+'\n\nCorrigir: quanto o cliente pagou NO TOTAL? (R$)',String(t).replace('.',','));if(r2===null)return;
+      const v2=parseFloat(String(r2).replace(',','.'));if(isNaN(v2)||v2<0){toast('Valor inválido');return}
+      try{await patchPed(p.id,{pago_valor:R2(v2)});p.pago_valor=R2(v2);toast('Pagamento corrigido ✅');aPedidos()}catch(e){toast(e.message)}return}
+    const falta=aReceber(p)||Number(p.total);
     const r=prompt('Quanto o cliente pagou AGORA? (R$)\nFalta: '+brl(falta)+'\n(digite 0 para marcar como fiado, sem pagamento ainda)',String(falta).replace('.',','));if(r===null)return;
     const v=parseFloat(String(r).replace(',','.'));if(isNaN(v)||v<0){toast('Valor inválido');return}
     const novo=R2((Number(p.pago_valor)||0)+v);const quit=novo>=Number(p.total)-0.005;const upd={pago_valor:novo};
