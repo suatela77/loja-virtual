@@ -898,7 +898,7 @@ function aProdutos(){
   $('#np').onclick=()=>{adm.edit={nome:'',descricao:'',preco:'',custo:'',categoria:'',imagens:[],estoque:null,ativo:true};adm.files=[];aProdutos()};
   document.querySelectorAll('[data-dp]').forEach(b=>b.onclick=async()=>{const p=prod(b.dataset.dp);if(!p||!confirm('Excluir o produto "'+p.nome+'"? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'DELETE'});prods=prods.filter(x=>x.id!==p.id);toast('Produto excluído');aProdutos()}catch(e){toast(e.message)}});
   document.querySelectorAll('[data-ex]').forEach(b=>b.onclick=()=>{adm.ext=b.dataset.ex;scrollTo(0,0);aProdutos()});
-  document.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{adm.edit=JSON.parse(JSON.stringify(prod(b.dataset.e)));adm.edit.custo=adm.custos[b.dataset.e]??'';adm.files=[];aProdutos()});
+  document.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{adm.edit=JSON.parse(JSON.stringify(prod(b.dataset.e)));adm.edit._e0=adm.edit.estoque??null;adm.edit.custo=adm.custos[b.dataset.e]??'';adm.files=[];aProdutos()});
 }
 const SQL_EXTRATO=`-- EXTRATO DE ESTOQUE (Casa do Barro) - pode rodar mais de uma vez sem problema
 create table if not exists public.loja_estoque_log(
@@ -1016,6 +1016,10 @@ function aForm(){
       const row={nome:p.nome.trim().toUpperCase(),descricao:p.descricao,preco,categoria:p.categoria.trim(),imagens:p.imagens,estoque:p.estoque,ativo:p.ativo};
       const pa=parseFloat(String(p.preco_atacado??'').replace(',','.'));if(!isNaN(pa))row.preco_atacado=pa;else if(p.id&&prod(p.id)&&prod(p.id).preco_atacado!=null)row.preco_atacado=null;
       let pid=p.id;
+      if(p.id){const e0=p._e0===undefined?null:p._e0;
+        if((p.estoque??null)===e0)delete row.estoque;
+        else{const fr=await api('/rest/v1/loja_produtos?id=eq.'+p.id+'&select=estoque');const cur=fr&&fr[0]?fr[0].estoque:null;
+          if((cur??null)!==e0&&!confirm('Atenção: enquanto você editava, o estoque deste produto mudou de '+(e0??'vazio')+' para '+(cur??'vazio')+' (provavelmente uma venda).\n\nGravar '+(p.estoque??'vazio')+' mesmo assim?')){$('#ps').disabled=false;$('#ps').textContent='Salvar produto';return}}}
       if(p.id)await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'PATCH',json:row});
       else{const r=await api('/rest/v1/loja_produtos',{method:'POST',json:row,headers:{Prefer:'return=representation'}});pid=r&&r[0]&&r[0].id}
       const cu=parseFloat(String(p.custo??'').replace(',','.'));
@@ -1170,8 +1174,13 @@ function aForn(){
   document.querySelectorAll('[data-cr]').forEach(b=>b.onclick=async()=>{const c=adm.compras.find(x=>x.id===b.dataset.cr);
     const somar=(c.itens||[]).filter(i=>i.pid&&prods.find(p=>String(p.id)===String(i.pid)&&p.estoque!=null));
     if(!confirm('Marcar como recebido'+(somar.length?' e somar '+somar.length+' item(ns) ao estoque?':'?')))return;
-    try{for(const i of somar){const p=prods.find(x=>String(x.id)===String(i.pid));const novo=(p.estoque||0)+Number(i.qtd||0);
-        await api('/rest/v1/loja_produtos?id=eq.'+p.id,{method:'PATCH',json:{estoque:novo}});p.estoque=novo}
+    try{for(const i of somar){const p=prods.find(x=>String(x.id)===String(i.pid));
+        let ok=false;for(let t=0;t<4&&!ok;t++){
+          const fr=await api('/rest/v1/loja_produtos?id=eq.'+p.id+'&select=estoque');const atual=fr&&fr[0]?fr[0].estoque:null;
+          const novo=(atual||0)+Number(i.qtd||0);
+          const r=await api('/rest/v1/loja_produtos?id=eq.'+p.id+(atual==null?'&estoque=is.null':'&estoque=eq.'+atual),{method:'PATCH',json:{estoque:novo},headers:{Prefer:'return=representation'}});
+          if(Array.isArray(r)&&r.length){p.estoque=novo;ok=true}}
+        if(!ok)throw new Error('Não consegui somar '+p.nome+'. Tente de novo.')}
       await api('/rest/v1/loja_compras?id=eq.'+c.id,{method:'PATCH',json:{status:'recebido',recebido_em:new Date().toISOString()}});
       await loadForn();toast('Estoque atualizado! ✅');aForn()}catch(e){toast(e.message)}});
 }
