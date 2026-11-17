@@ -691,8 +691,8 @@ async function snapPend(){for(const p of adm.pedidos){if(p.lucro==null&&(p.statu
 function lucroLinha(p){const L=lucroDe(p);
   if(!L.ok)return '<div class="muted pad">💰 Lucro: cadastre o valor de compra de todos os itens para calcular.</div>';
   return `<div class="lucro">💰 Lucro: <b>${brl(L.lucro)}</b> · ${fmtp(pct(L.rec,L.custo))} sobre a compra <span class="muted">(compra ${brl(L.custo)})${L.snap?'':' · estimado'}</span></div>`}
-function visitasHtml(){const v=adm.vis;if(!v)return '';const c=(t,n)=>`<div style="flex:1;min-width:70px;text-align:center"><div style="font-size:24px;font-weight:900;color:var(--ink)">${n||0}</div><div class="muted" style="font-size:12px">${t}</div></div>`;
-  return `<div class="box" style="margin:12px 0"><b>👀 Visitantes</b> <span class="muted" style="font-size:12px">(pessoas diferentes)</span><div class="row" style="gap:6px;margin-top:8px">${c('Hoje',v.hoje)}${c('Ontem',v.ontem)}${c('7 dias',v.d7)}${c('30 dias',v.d30)}${c('Total',v.total)}</div></div>`}
+function visitasHtml(){const v=adm.vis;if(!v)return '';const c=(t,n)=>`<div style="flex:1 1 0;min-width:0;text-align:center"><div style="font-size:22px;font-weight:900;color:var(--ink)">${n||0}</div><div class="muted" style="font-size:11px;white-space:nowrap">${t}</div></div>`;
+  return `<div class="box" style="margin:12px 0"><b>👀 Visitantes</b> <span class="muted" style="font-size:12px">(pessoas diferentes)</span><div style="display:flex;gap:4px;margin-top:8px">${c('Hoje',v.hoje)}${c('Ontem',v.ontem)}${c('7 dias',v.d7)}${c('30 dias',v.d30)}${c('Total',v.total)}</div></div>`}
 function resumoHtml(){const now=new Date();const f=p=>{const d=new Date(p.created_at);return adm.per==='tudo'||(adm.per==='mes'&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear())||(adm.per==='ant'&&((d.getMonth()+1)%12===now.getMonth()&&(now.getMonth()===0?d.getFullYear()===now.getFullYear()-1:d.getFullYear()===now.getFullYear())))};
   const l=adm.pedidos.filter(p=>(p.status==='pago'||p.status==='enviado')&&f(p));let rec=0,custo=0,lu=0,inc=0;
   l.forEach(p=>{const L=lucroDe(p);if(L.ok){rec+=L.rec;custo+=L.custo;lu+=L.lucro}else inc++});
