@@ -297,7 +297,9 @@ function shrink(file,max=1100){return new Promise((ok,no)=>{
 function saveCart(){ls.set('loja_cart',cart);$('#cnt').textContent=cart.reduce((a,i)=>a+i.qtd,0)}
 function addCart(id,q=1){const i=cart.find(x=>x.id===id);i?i.qtd+=q:cart.push({id,qtd:q});saveCart();toast('Adicionado ao carrinho! 🛍️')}
 const prod=id=>prods.find(p=>p.id===id);
-const cartTotal=()=>cart.reduce((a,i)=>a+(prod(i.id)?.preco||0)*i.qtd,0);
+let ATAC=!!ls.get('loja_atac',false);
+const pv=p=>{if(!p)return 0;const a=Number(p.preco_atacado);return ATAC&&p.preco_atacado!=null&&a>0?a:Number(p.preco)};
+const cartTotal=()=>cart.reduce((a,i)=>a+pv(prod(i.id))*i.qtd,0);
 const foto=p=>p.imagens&&p.imagens[0];
 const FOX=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 130"><polygon points="22,10 52,38 18,58" fill="#ff8a00" stroke="#7a3b00" stroke-width="4" stroke-linejoin="round"/><polygon points="118,10 88,38 122,58" fill="#ff8a00" stroke="#7a3b00" stroke-width="4" stroke-linejoin="round"/><polygon points="26,22 42,38 25,48" fill="#ffd0a0"/><polygon points="114,22 98,38 115,48" fill="#ffd0a0"/><path d="M70 28 C108 28 124 52 118 78 C112 100 90 112 70 112 C50 112 28 100 22 78 C16 52 32 28 70 28Z" fill="#ff8a00" stroke="#7a3b00" stroke-width="4"/><path d="M22 78 C30 70 46 74 70 96 C94 74 110 70 118 78 C112 100 90 112 70 112 C50 112 28 100 22 78Z" fill="#fff"/><ellipse cx="50" cy="60" rx="7" ry="9" fill="#2a1b4d"/><ellipse cx="90" cy="60" rx="7" ry="9" fill="#2a1b4d"/><circle cx="52.5" cy="56" r="2.6" fill="#fff"/><circle cx="92.5" cy="56" r="2.6" fill="#fff"/><ellipse cx="36" cy="78" rx="8" ry="5" fill="#ff3d81" opacity=".45"/><ellipse cx="104" cy="78" rx="8" ry="5" fill="#ff3d81" opacity=".45"/><ellipse cx="70" cy="80" rx="8" ry="6" fill="#2a1b4d"/><path d="M58 90 Q70 102 82 90" fill="none" stroke="#2a1b4d" stroke-width="4" stroke-linecap="round"/><g transform="translate(96 86)"><rect x="0" y="16" width="30" height="26" rx="9" fill="#ffd0a0" stroke="#7a3b00" stroke-width="3.5"/><path d="M8 18 L8 4 Q8 -4 15 -2 Q20 0 18 8 L17 16Z" fill="#ffd0a0" stroke="#7a3b00" stroke-width="3.5" stroke-linejoin="round"/></g></svg>`;
 function setLogo(){$('#logo').innerHTML='<span class="fx"><img src="raposa-pequena.png" alt=""></span>'+h(cfg.nome)}
@@ -342,16 +344,16 @@ function vHome(){
   document.querySelectorAll('.chip[data-c]').forEach(b=>b.onclick=()=>{cat=b.dataset.c;vHome()});
 }
 function card(p,i){const c=COLORS[i%COLORS.length];
-  return `<div class="pcard" style="--c:${c}"><a href="#/produto/${p.id}"><div class="pimg">${foto(p)?`<img loading="lazy" src="${h(foto(p))}" alt="${h(p.nome)}">`:emoji[i%emoji.length]}${p.estoque===0?'<i>Esgotado</i>':''}</div></a><div class="pbody"><a href="#/produto/${p.id}"><h3>${nb(p.nome)}</h3></a><div class="pbuy"><span class="price">${brl(p.preco)}</span>${p.estoque===0?'':`<button data-add="${p.id}" aria-label="Adicionar ao carrinho"><span>Comprar</span></button>`}</div></div></div>`}
+  return `<div class="pcard" style="--c:${c}"><a href="#/produto/${p.id}"><div class="pimg">${foto(p)?`<img loading="lazy" src="${h(foto(p))}" alt="${h(p.nome)}">`:emoji[i%emoji.length]}${p.estoque===0?'<i>Esgotado</i>':''}</div></a><div class="pbody"><a href="#/produto/${p.id}"><h3>${nb(p.nome)}</h3></a><div class="pbuy"><span class="price">${brl(pv(p))}</span>${p.estoque===0?'':`<button data-add="${p.id}" aria-label="Adicionar ao carrinho"><span>Comprar</span></button>`}</div></div></div>`}
 
 function vProduto(id){
   const p=prod(id);if(!p){location.hash='#/';return}
   $('#app').innerHTML=`<div class="wrap"><p><a href="#/">← Voltar</a></p>
   ${p.imagens?.length?`<div class="gal">${p.imagens.map(u=>`<img src="${h(u)}" alt="">`).join('')}</div>`:`<div class="box empty"><div class="big">🎁</div></div>`}
-  <div class="box"><h1>${h(p.nome)}</h1><div class="price" style="font-size:32px;margin:8px 0">${brl(p.preco)}</div>
+  <div class="box"><h1>${h(p.nome)}</h1><div class="price" style="font-size:32px;margin:8px 0">${brl(pv(p))}</div>${ATAC&&pv(p)<Number(p.preco)?`<div class="muted">Varejo: <s>${brl(p.preco)}</s> · preço de atacado</div>`:''}
   ${p.categoria&&p.categoria.trim()?`<span class="tag" style="background:var(--violet)">${h(p.categoria)}</span>`:''}
   <p style="white-space:pre-wrap;line-height:1.5;text-align:left;font-size:17px">${h(p.descricao)}</p></div></div>
-  <div class="bar"><div class="price">${brl(p.preco)}</div>${p.estoque===0?'<span class="muted grow">Esgotado</span>':`<button class="btn grow" id="add">Colocar no carrinho 🛒</button>`}</div>`;
+  <div class="bar"><div class="price">${brl(pv(p))}</div>${p.estoque===0?'<span class="muted grow">Esgotado</span>':`<button class="btn grow" id="add">Colocar no carrinho 🛒</button>`}</div>`;
   const a=$('#add');if(a)a.onclick=()=>addCart(p.id);
   document.querySelectorAll('.gal img').forEach((im,i)=>im.onclick=()=>lightbox(p.imagens,i));
 }
@@ -527,9 +529,9 @@ function vCarrinho(){
   if(!cart.length){$('#app').innerHTML=`<div class="wrap empty"><div class="big">🛒</div><h2>Seu carrinho está vazio</h2><p class="muted">Escolha algo lindo na vitrine!</p><a class="btn" href="#/">Ver produtos</a></div>`;return}
   const me=ls.get('loja_cli',{});
   $('#app').innerHTML=`<div class="wrap"><h2 style="margin:16px 0">Seu carrinho 🛒</h2>
-  <div class="box">${cart.map(i=>{const p=prod(i.id);return `<div class="row" style="margin:10px 0"><div class="th">${foto(p)?`<img src="${h(foto(p))}" alt="">`:'🎁'}</div><div class="grow"><b>${h(p.nome)}</b><div class="price" style="font-size:18px">${brl(p.preco*i.qtd)}</div></div><div class="qty"><button data-m="${p.id}">−</button><b>${i.qtd}</b><button data-p="${p.id}">+</button></div></div>`}).join('')}
+  <div class="box">${cart.map(i=>{const p=prod(i.id);return `<div class="row" style="margin:10px 0"><div class="th">${foto(p)?`<img src="${h(foto(p))}" alt="">`:'🎁'}</div><div class="grow"><b>${h(p.nome)}</b><div class="price" style="font-size:18px">${brl(pv(p)*i.qtd)}</div></div><div class="qty"><button data-m="${p.id}">−</button><b>${i.qtd}</b><button data-p="${p.id}">+</button></div></div>`}).join('')}
   <hr style="border:0;border-top:2px dashed #eadcff"><div id="tfr"></div><div id="tcp">${cup?`<div class="row"><span class="grow">Cupom ${h(cup.codigo)}</span><b style="color:#16a34a">−${brl(cupVal())}</b></div>`:''}</div><div class="row"><b class="grow">Total</b><span class="price" style="font-size:28px" id="tt">${brl(Math.max(0,cartTotal()+freteVal()-cupVal()))}</span></div></div>
-  <div class="box"><h3>Cupom de desconto 🎟️</h3><div class="row" style="gap:8px"><input class="f grow" id="cup" placeholder="Digite seu cupom" autocapitalize="characters" value="${cup?h(cup.codigo):''}"><button class="btn violet" id="cupb" style="flex:none">Aplicar</button></div><p class="muted" id="cupm"></p></div>
+  ${ATAC?'':''}<div class="box" ${ATAC?'hidden':''}><h3>Cupom de desconto 🎟️</h3><div class="row" style="gap:8px"><input class="f grow" id="cup" placeholder="Digite seu cupom" autocapitalize="characters" value="${cup?h(cup.codigo):''}"><button class="btn violet" id="cupb" style="flex:none">Aplicar</button></div><p class="muted" id="cupm"></p></div>
   ${freteOn()?`<div class="box"><h3>Entrega 🚚</h3>
   <label><input type="radio" name="ftipo" value="entrega" ${!fr||fr.tipo!=='retirada'?'checked':''}> Entregar no meu endereço</label>
   <label><input type="radio" name="ftipo" value="retirada" ${fr&&fr.tipo==='retirada'?'checked':''}> Retirar na loja (sem frete)</label>
@@ -569,9 +571,9 @@ async function finalizar(){
   try{
     const locTxt=fr&&fr.tipo==='entrega'&&fr.pt?`https://www.google.com/maps/search/?api=1&query=${fr.pt.lat.toFixed(6)},${fr.pt.lon.toFixed(6)}`:'';
     const endPed=[$('#ce').value.trim(),locTxt?'📍 Localização: '+locTxt:''].filter(Boolean).join('\n');
-    const r=await rpc('loja_criar_pedido',{p_nome:nome,p_tel:tel,p_email:'',p_end:endPed,p_obs:$('#co').value,p_itens:cart,...(cup?{p_cupom:cup.codigo}:{}),...(fr&&fr.valor>0?{p_frete:fr.valor,p_frete_desc:fr.desc}:{})});
-    const linhas=cart.map(i=>{const p=prod(i.id);return `• ${i.qtd}x ${p.nome} (${brl(p.preco)} cada) — ${brl(p.preco*i.qtd)}`}).join('\n');
-    const txt=`Olá! Fiz um pedido na ${cfg.nome} 🛍️\n\nPedido: ${r.codigo}\n${linhas}${cup?'\n• Cupom '+cup.codigo+' — −'+brl(cupVal()):''}${fr?'\n• '+(fr.tipo==='retirada'?'Retirada na loja — sem frete':fr.desc+' — '+brl(fr.valor)):''}\n\nTotal: ${brl(r.total)}\nNome: ${nome}${$('#ce').value?'\nEndereço: '+$('#ce').value:''}${locTxt?'\n📍 Localização: '+locTxt:''}${$('#co').value?'\nObs: '+$('#co').value:''}\n\nAcompanhar: ${location.origin}/#/pedido/${r.codigo}`;
+    const r=await rpc(ATAC?'loja_criar_pedido_atacado':'loja_criar_pedido',{p_nome:nome,p_tel:tel,p_email:'',p_end:endPed,p_obs:$('#co').value,p_itens:cart,...(cup&&!ATAC?{p_cupom:cup.codigo}:{}),...(fr&&fr.valor>0?{p_frete:fr.valor,p_frete_desc:fr.desc}:{})});
+    const linhas=cart.map(i=>{const p=prod(i.id);return `• ${i.qtd}x ${p.nome} (${brl(pv(p))} cada) — ${brl(pv(p)*i.qtd)}`}).join('\n');
+    const txt=`Olá! Fiz um pedido${ATAC?' de ATACADO':''} na ${cfg.nome} 🛍️\n\nPedido: ${r.codigo}\n${linhas}${cup?'\n• Cupom '+cup.codigo+' — −'+brl(cupVal()):''}${fr?'\n• '+(fr.tipo==='retirada'?'Retirada na loja — sem frete':fr.desc+' — '+brl(fr.valor)):''}\n\nTotal: ${brl(r.total)}\nNome: ${nome}${$('#ce').value?'\nEndereço: '+$('#ce').value:''}${locTxt?'\n📍 Localização: '+locTxt:''}${$('#co').value?'\nObs: '+$('#co').value:''}\n\nAcompanhar: ${location.origin}/#/pedido/${r.codigo}`;
     cart=[];fr=null;cup=null;saveCart();
     ls.set('loja_ult',r.codigo);
     location.hash='#/pedido/'+r.codigo;
@@ -665,7 +667,7 @@ function drawAdmin(){
   <button class="chip ${adm.tab==='config'?'on':''}" data-t="config">⚙️ Loja</button>
   <button class="chip" id="so">Sair</button></div>
   <div class="stats"><div class="stat"><b>${pend}</b>pedidos novos</div><div class="stat"><b>${adm.pedidos.length}</b>pedidos</div><div class="stat"><b>${prods.length}</b>produtos</div></div><div id="ad"></div></div>`;
-  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{adm.tab=b.dataset.t;adm.edit=null;adm.ext=null;adm.pay=null;adm.np=null;adm.cedit=null;adm.nc=null;adm.fedit=null;drawAdmin()});
+  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{adm.tab=b.dataset.t;adm.edit=null;adm.ext=null;adm.pay=null;adm.rota=null;adm.np=null;adm.cedit=null;adm.nc=null;adm.fedit=null;drawAdmin()});
   $('#so').onclick=sair;
   ({pedidos:aPedidos,clientes:aClientes,produtos:aProdutos,cupons:aCupons,forn:aForn,frete:aFrete,config:aConfig})[adm.tab]();
 }
@@ -721,6 +723,37 @@ function backup(){const d=new Date().toISOString().slice(0,10);
   baixar('pedidos-'+d+'.csv',[['Codigo','Data','Cliente','Telefone','Endereco','Situacao','Itens','Total','Pago','Lucro','Observacao']].concat(adm.pedidos.map(p=>[p.codigo,new Date(p.created_at).toLocaleString('pt-BR'),p.cliente_nome,p.cliente_tel,p.endereco,(STATUS[p.status]||[p.status])[0],(p.itens||[]).map(i=>i.qtd+'x '+i.nome+' ('+i.preco+')').join(' | '),String(p.total).replace('.',','),p.pago_valor==null?'':String(p.pago_valor).replace('.',','),p.lucro==null?'':String(p.lucro).replace('.',','),p.obs])));
   setTimeout(()=>baixar('clientes-'+d+'.csv',[['Nome','Telefone','Endereco']].concat(adm.clientes.map(c=>[c.nome,c.tel,c.endereco]))),700);
   setTimeout(()=>baixar('produtos-'+d+'.csv',[['Produto','Preco varejo','Preco atacado','Custo','Estoque','Ativo']].concat(prods.map(p=>[p.nome,String(p.preco).replace('.',','),p.preco_atacado==null?'':String(p.preco_atacado).replace('.',','),adm.custos[p.id]==null?'':String(adm.custos[p.id]).replace('.',','),p.estoque==null?'':p.estoque,p.ativo?'sim':'nao']))),1400)}
+const ROTA_MAX=9;
+const rotaCands=()=>adm.pedidos.filter(p=>!p.arquivado&&p.status!=='enviado'&&p.status!=='cancelado'&&String(p.endereco||'').trim());
+const endCurto=t=>String(t||'').replace(/📍\s*Localiza[çc][ãa]o:.*$/is,'').replace(/https?:\/\/\S+/g,'').replace(/\(?\s*-?\d{1,3}\.\d{3,}\s*[,;]\s*-?\d{1,3}\.\d{3,}\s*\)?/g,'').trim().slice(0,90)||'Local marcado no mapa';
+function rotaHtml(){const R=adm.rota,c=rotaCands();const st=k=>(STATUS[k]||[k,'#999']);
+  let o=`<div class="box" style="background:#eff6ff;border:2px solid #93c5fd;margin-top:10px">`;
+  if(R.res){const r=R.res;
+    o+=`<b>🗺️ Rota montada</b> <span class="muted" style="font-size:13px">(${r.stops.length} entrega${r.stops.length>1?'s':''} · cerca de ${String(Math.round(r.km*10)/10).replace('.',',')} km)</span>
+    <div style="padding:8px 0;border-bottom:1px dashed #93c5fd"><b>🏠 Saída:</b> <span class="muted">${h(endCurto(cfg.frete_origem||'Cabo Frio, RJ'))}</span></div>
+    ${r.stops.map((x,k)=>`<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed #93c5fd"><b style="flex:none;width:30px;height:30px;border-radius:50%;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center">${k+1}</b><div style="flex:1;min-width:0"><div style="font-weight:800">${h(x.p.cliente_nome)}</div><div class="muted" style="font-size:13px">${h(endCurto(x.p.endereco))}</div></div><a class="btn small" style="background:#33ccff;color:#05324a" target="_blank" rel="noopener" href="${wazeUrl(x.p.endereco)}">🧭</a></div>`).join('')}
+    ${r.falhou.length?`<p class="muted" style="font-size:13px">⚠️ Não consegui localizar: ${r.falhou.map(p=>h(p.cliente_nome)).join(', ')}. Confira o endereço desses pedidos.</p>`:''}
+    <p></p><a class="btn block green" target="_blank" rel="noopener" href="${r.url}">📍 Abrir a rota no Google Maps</a>
+    <p class="muted" style="font-size:12px;margin:6px 0 0">A ordem foi montada indo sempre para a entrega mais perto. Use o 🧭 para ir de um em um pelo Waze.</p>
+    <p></p><button class="btn block ghost" id="rtv">✏️ Escolher outros pedidos</button>`}
+  else{o+=`<b>🗺️ Quais pedidos vão sair agora?</b>
+    ${c.length?c.map(p=>`<label style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed #93c5fd;font-weight:400"><input type="checkbox" data-rs="${p.id}" ${R.sel.includes(p.id)?'checked':''} style="width:22px;height:22px;flex:none"><span style="flex:1;min-width:0"><b>${h(p.cliente_nome)}</b> <span class="tag" style="background:${st(p.status)[1]};font-size:11px">${st(p.status)[0]}</span><br><span class="muted" style="font-size:13px">${h(endCurto(p.endereco))}</span></span></label>`).join(''):'<p class="muted">Nenhum pedido em andamento com endereço.</p>'}
+    <p class="muted" style="font-size:12px">Até ${ROTA_MAX} entregas por rota.</p><button class="btn block" style="background:#2563eb" id="rtm" ${c.length?'':'disabled'}>Montar a rota</button>`}
+  return o+'</div>'}
+function ligarRota(){const R=adm.rota;
+  document.querySelectorAll('[data-rs]').forEach(x=>x.onchange=()=>{const id=x.dataset.rs;if(x.checked){if(R.sel.length>=ROTA_MAX){x.checked=false;toast('Máximo de '+ROTA_MAX+' entregas por rota');return}R.sel.push(id)}else R.sel=R.sel.filter(i=>i!==id)});
+  if($('#rtv'))$('#rtv').onclick=()=>{R.res=null;aPedidos()};
+  if($('#rtm'))$('#rtm').onclick=async()=>{const ps=rotaCands().filter(p=>R.sel.includes(p.id));if(!ps.length){toast('Marque ao menos um pedido');return}
+    const b=$('#rtm');b.disabled=true;
+    try{b.textContent='Localizando a saída...';const o=await locate('','',cfg.frete_origem||'Cabo Frio, RJ');if(!o.pt)throw new Error('Não achei o endereço de saída. Confira na aba Frete.');BIAS=o.pt;
+      const ok=[],falhou=[];for(let i=0;i<ps.length;i++){b.textContent='Localizando '+(i+1)+' de '+ps.length+'...';try{const d=await locate('','',ps[i].endereco);if(d&&d.pt)ok.push({p:ps[i],pt:d.pt});else falhou.push(ps[i])}catch(e){falhou.push(ps[i])}}
+      if(!ok.length)throw new Error('Não consegui localizar nenhum endereço.');
+      const stops=[];let cur=o.pt,km=0;const rest=ok.slice();
+      while(rest.length){let bi=0,bd=1e9;rest.forEach((x,i)=>{const d=hav(cur,x.pt);if(d<bd){bd=d;bi=i}});const x=rest.splice(bi,1)[0];km+=bd*1.3;stops.push(x);cur=x.pt}
+      const url='https://www.google.com/maps/dir/'+[o.pt,...stops.map(x=>x.pt)].map(q=>q.lat.toFixed(6)+','+q.lon.toFixed(6)).join('/');
+      R.res={stops,falhou,km,url};aPedidos();const bx=$('#rtb');if(bx)bx.scrollIntoView({block:'start'})}
+    catch(e){toast(e.message);b.disabled=false;b.textContent='Montar a rota'}};
+}
 const DIAS_PARADO=2;
 function paradosHtml(){const lim=Date.now()-DIAS_PARADO*864e5;
   const l=adm.pedidos.filter(p=>!p.arquivado&&p.status==='aguardando_pagamento'&&new Date(p.created_at).getTime()<lim&&aReceber(p)>0).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
@@ -762,11 +795,11 @@ function aPedidos(){
   ${p.endereco?`<div class="muted pad">📍 ${h(p.endereco)}</div>`:''}${ob?`<div class="muted pad">📝 ${h(ob)}</div>`:''}
   ${p.comprovante_url?`<p><a href="${h(p.comprovante_url)}" target="_blank"><img src="${h(p.comprovante_url)}" style="max-width:140px;border-radius:12px" alt="comprovante"></a></p>`:''}
   <select class="f" data-s="${p.id}">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===p.status?'selected':''}>${v[0]}</option>`).join('')}</select>
-  <div class="pbt"><button class="btn small" style="background:#f59e0b" data-ed="${p.id}">✏️ Editar</button><a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a><a class="btn small green" href="${wa}">WhatsApp</a>${p.endereco?`<a class="btn small" style="background:#33ccff;color:#05324a" target="_blank" rel="noopener" href="${wazeUrl(p.endereco)}">🧭 Waze</a>`:''}<button class="btn small" style="background:#0d9488" data-rp="${p.id}">💵 Pagamento${adm.pay===p.id?' ▴':''}</button>${aReceber(p)>0?`<button class="btn small" style="background:#d97706" data-cb="${p.id}">📣 Cobrar</button>`:''}<button class="btn small ghost" data-ar="${p.id}">${p.arquivado?'↩️ Desarquivar':'📁 Arquivar'}</button><button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button></div>
+  <div class="pbt"><button class="btn small" style="background:#f59e0b" data-ed="${p.id}">✏️ Editar</button><a class="btn small violet" href="#/recibo/${h(p.codigo)}">Recibo</a><a class="btn small green" href="${wa}">WhatsApp</a>${p.endereco?`<a class="btn small" style="background:#33ccff;color:#05324a" target="_blank" rel="noopener" href="${wazeUrl(p.endereco)}">🧭 Waze</a>`:''}<button class="btn small" style="background:#0d9488" data-rp="${p.id}">💵 Pagamento${adm.pay===p.id?' ▴':''}</button>${aReceber(p)>0?`<button class="btn small" style="background:#d97706" data-cb="${p.id}">📣 Cobrar</button>`:''}${p.status==='enviado'?`<button class="btn small" style="background:#db2777" data-ty="${p.id}">🙏 Agradecer</button>`:''}<button class="btn small ghost" data-ar="${p.id}">${p.arquivado?'↩️ Desarquivar':'📁 Arquivar'}</button><button class="btn small" style="background:#e53935" data-del="${p.id}">🗑️ Excluir</button></div>
   <button class="btn block" style="margin-top:10px;background:linear-gradient(90deg,#16a34a,#22c55e)" data-eta="${p.id}">🚚 Avisar: pedido a caminho</button><div class="eta" id="eta-${p.id}"></div></div>`};
   const arq=adm.pv==='arq';const lista=adm.pedidos.filter(p=>!!p.arquivado===arq);const nArq=adm.pedidos.filter(p=>p.arquivado).length;
   const conc=adm.pedidos.filter(p=>!p.arquivado&&(p.status==='enviado'||p.status==='cancelado'));
-  $('#ad').innerHTML=`<button class="btn block" id="npd">+ Novo pedido (manual)</button><p></p>`+paradosHtml()+estoqueBaixoHtml()+visitasHtml()+resumoHtml()+`<div style="margin:12px 0"><button class="chip ${arq?'':'on'}" data-pv="ativos">Em andamento (${adm.pedidos.length-nArq})</button><button class="chip ${arq?'on':''}" data-pv="arq">📁 Arquivados (${nArq})</button></div>`
+  $('#ad').innerHTML=`<button class="btn block" id="npd">+ Novo pedido (manual)</button><p></p><button class="btn block" style="background:linear-gradient(90deg,#2563eb,#0ea5e9)" id="rtb">🗺️ Rota das entregas${adm.rota?' ▴':''}</button>${adm.rota?rotaHtml():''}<p></p>`+paradosHtml()+estoqueBaixoHtml()+visitasHtml()+resumoHtml()+`<div style="margin:12px 0"><button class="chip ${arq?'':'on'}" data-pv="ativos">Em andamento (${adm.pedidos.length-nArq})</button><button class="chip ${arq?'on':''}" data-pv="arq">📁 Arquivados (${nArq})</button></div>`
    +(!arq&&conc.length?`<button class="btn block ghost" id="arall">📁 Arquivar os ${conc.length} já entregues/cancelados</button><p></p>`:'')
    +(lista.length?lista.map(card).join(''):`<div class="empty"><div class="big">${arq?'📁':'📭'}</div><h2>${arq?'Nenhum pedido arquivado':'Nenhum pedido em andamento'}</h2></div>`);
   document.querySelectorAll('[data-pv]').forEach(b=>b.onclick=()=>{adm.pv=b.dataset.pv;aPedidos()});
@@ -779,6 +812,12 @@ function aPedidos(){
   document.querySelectorAll('[data-cb]').forEach(b=>b.onclick=()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.cb);if(!p)return;const f=aReceber(p);
     const msg=`Olá, ${p.cliente_nome}! 😊 Passando para lembrar do seu pedido ${p.codigo} na ${cfg.nome}. ${f<Number(p.total)?`Falta pagar ${brl(f)} (total ${brl(p.total)}).`:`Valor: ${brl(f)}.`}${cfg.pix_chave?`\n\nPix: ${cfg.pix_chave}${cfg.pix_nome?' ('+cfg.pix_nome+')':''}`:''}\n\nSe você já pagou, me envie o comprovante, por favor! 🙏`;
     const num='55'+String(p.cliente_tel||'').replace(/\D/g,'').replace(/^55/,'');window.open('https://wa.me/'+num+'?text='+encodeURIComponent(msg),'_blank')});
+  document.querySelectorAll('[data-ty]').forEach(b=>b.onclick=()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.ty);if(!p)return;
+    const nome1=String(p.cliente_nome||'').trim().split(/\s+/)[0]||'';const n1=nome1?nome1.charAt(0)+nome1.slice(1).toLowerCase():'';
+    const msg=`Olá${n1?', '+n1:''}! 😊 Aqui é da ${cfg.nome}.\n\nSeu pedido ${p.codigo} foi entregue. Muito obrigado pela compra! 🧡\n\nSe gostou, indicar a loja para amigos e familiares me ajuda muito: ${location.origin}/\n\nE se puder, me mande uma foto do produto aí na sua casa. Vou adorar ver! 📸`;
+    const num='55'+String(p.cliente_tel||'').replace(/\D/g,'').replace(/^55/,'');window.open('https://wa.me/'+num+'?text='+encodeURIComponent(msg),'_blank')});
+  $('#rtb').onclick=()=>{adm.rota=adm.rota?null:{sel:rotaCands().filter(p=>p.status==='pago'||p.status==='comprovante_enviado').map(p=>p.id).slice(0,ROTA_MAX),res:null};aPedidos()};
+  if(adm.rota)ligarRota();
   if($('#arall'))$('#arall').onclick=async()=>{if(!confirm('Arquivar '+conc.length+' pedido(s) já entregues ou cancelados? Eles continuam salvos na aba Arquivados.'))return;try{for(const p of conc){await patchPed(p.id,{arquivado:true});p.arquivado=true}toast('Pedidos arquivados 📁')}catch(e){toast(e.message)}aPedidos()};
   document.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.ed);if(!p)return;
     const fi=p.itens.find(i=>!i.id&&/^frete/i.test(String(i.nome)));const di=p.itens.find(i=>!i.id&&/^desconto/i.test(String(i.nome)));
@@ -1277,8 +1316,25 @@ function aConfig(){
   <label for="cpn">Nome do recebedor</label><input class="f" id="cpn" value="${h(cfg.pix_nome)}">
   <label for="cpi">Cidade</label><input class="f" id="cpi" value="${h(cfg.pix_cidade)}">
   <p></p><button class="btn block" id="cs">Salvar</button></div>
-  <div class="box"><h3>💾 Backup</h3><p class="muted">Baixa 3 planilhas (pedidos, clientes e produtos) para guardar no celular. Faça de vez em quando.</p><button class="btn block violet" id="bkp">Baixar backup (planilhas)</button></div>`;
+  <div class="box" style="background:#eff6ff"><h3>🏪 Catálogo de atacado</h3><p class="muted">Mande este link para os lojistas. Eles veem os <b>preços de atacado</b> e fazem o pedido pelo site (o pedido chega marcado como ATACADO). Produto sem preço de atacado aparece com o preço normal.</p>
+  <input class="f" readonly value="${h(location.origin+'/#/atacado')}" onclick="this.select()"><p></p>
+  <div class="row" style="gap:8px"><button class="btn grow" id="atcp">📋 Copiar link</button><a class="btn grow green" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('Olá! Este é o catálogo de ATACADO da '+cfg.nome+', com os preços para lojistas: '+location.origin+'/#/atacado')}">📲 Mandar no WhatsApp</a></div></div>
+  <div class="box"><h3>💾 Backup</h3><p class="muted">Baixa 3 planilhas (pedidos, clientes e produtos) para guardar no celular. Faça de vez em quando.</p><button class="btn block violet" id="bkp">Baixar backup (planilhas)</button>
+  <h3 style="margin-top:18px">🗄️ Cópias automáticas</h3><p class="muted">Todo domingo às 22h a loja guarda sozinha uma cópia completa (pedidos, clientes, produtos, custos, fornecedores…) e avisa no Telegram. Ficam as 8 últimas.</p><div id="bkl" class="muted">Carregando…</div>
+  <p></p><button class="btn block ghost" id="bkn">🗄️ Fazer uma cópia agora</button>
+  <h3 style="margin-top:18px">📊 Resumo do dia</h3><p class="muted">Todo dia às 21h o bot do Telegram manda o resumo: pedidos novos, vendas pagas, lucro, quanto falta receber e estoque baixo.</p>
+  <button class="btn block ghost" id="rsn">📲 Mandar o resumo agora (teste)</button></div>`;
   $('#bkp').onclick=()=>{backup();toast('Baixando as planilhas… 💾')};
+  $('#atcp').onclick=async()=>{try{await navigator.clipboard.writeText(location.origin+'/#/atacado');toast('Link copiado ✅')}catch(e){toast('Não consegui copiar')}};
+  const bkLista=async()=>{const el=$('#bkl');if(!el)return;
+    try{const l=await api('/rest/v1/loja_backup?select=id,created_at,resumo&order=id.desc&limit=8');
+      el.innerHTML=l.length?l.map(b=>`<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px dashed #ddd"><div><b style="color:var(--ink)">${new Date(b.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</b><div style="font-size:13px">${h(b.resumo||'')}</div></div><button class="btn small violet" data-bkd="${b.id}">⬇️ Baixar</button></div>`).join(''):'Nenhuma cópia ainda. A primeira sai no domingo, ou toque em "Fazer uma cópia agora".';
+      document.querySelectorAll('[data-bkd]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{const r=await api('/rest/v1/loja_backup?select=created_at,dados&id=eq.'+b.dataset.bkd);
+        const blob=new Blob([JSON.stringify(r[0].dados,null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='copia-casa-do-barro-'+ymd(r[0].created_at)+'.json';document.body.appendChild(a);a.click();a.remove();toast('Cópia baixada 💾')}catch(e){toast(e.message)}b.disabled=false})}
+    catch(e){el.textContent=/loja_backup|schema cache|does not exist/i.test(e.message)?'Falta rodar o comando novo no Supabase.':e.message}};
+  bkLista();
+  $('#bkn').onclick=async()=>{const b=$('#bkn');b.disabled=true;b.textContent='Fazendo a cópia…';try{const r=await rpc('loja_backup_fazer',{});toast('Cópia feita ✅ '+(r||''));await bkLista()}catch(e){toast(/loja_backup_fazer|schema cache/i.test(e.message)?'Falta rodar o comando novo no Supabase.':e.message)}b.disabled=false;b.textContent='🗄️ Fazer uma cópia agora'};
+  $('#rsn').onclick=async()=>{const b=$('#rsn');b.disabled=true;try{await rpc('loja_resumo_dia',{});toast('Resumo enviado no Telegram 📲')}catch(e){toast(/loja_resumo_dia|schema cache/i.test(e.message)?'Falta rodar o comando novo no Supabase.':e.message)}b.disabled=false};
   const velhas=()=>prods.filter(p=>(p.imagens||[]).some(u=>/bmgzabkzuagegovozvlt/.test(u)));
   if(velhas().length){$('#ad').insertAdjacentHTML('beforeend',`<div class="box"><h3>📦 Fotos antigas</h3><p class="muted"><b>${velhas().length}</b> produto(s) ainda usam fotos guardadas no projeto antigo. Toque abaixo para copiar para cá. Deixe a tela aberta até terminar.</p><button class="btn block" id="mvf">Copiar fotos para este projeto</button><p class="muted" id="mvm"></p></div>`);
     $('#mvf').onclick=async()=>{const b=$('#mvf');b.disabled=true;const l=velhas();let ok=0,er=0,n=0;
@@ -1299,7 +1355,9 @@ function aConfig(){
 function route(){
   const z=$('#zap');if(z)z.classList.toggle('off',/^#\/(recibo|admin)/.test(location.hash));
   const [,a,b]=(location.hash||'#/').split('/');window.scrollTo(0,0);
+  if(a==='atacado'||a==='varejo'){ATAC=a==='atacado';ls.set('loja_atac',ATAC);cup=null;saveCart();location.hash='#/';return}
   if(a==='produto')vProduto(b);else if(a==='carrinho')vCarrinho();else if(a==='pedido')vPedido(b);else if(a==='recibo')vRecibo(b);else if(a==='admin')vAdmin();else vHome();
+  if(ATAC&&a!=='admin'&&a!=='recibo')$('#app').insertAdjacentHTML('afterbegin',`<div style="background:linear-gradient(90deg,#0369a1,#0ea5e9);color:#fff;font-weight:800;text-align:center;padding:9px 14px;font-size:15px">🏪 Catálogo de ATACADO · preços para lojistas · <a href="#/varejo" style="color:#fff;text-decoration:underline">sair</a></div>`);
 }
 addEventListener('hashchange',route);
 (function(){try{if(/^#\/admin/.test(location.hash)||ls.get('loja_sess'))return;let v=localStorage.getItem('loja_vid');if(!v){v=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(36).slice(2)).replace(/-/g,'');localStorage.setItem('loja_vid',v)}
