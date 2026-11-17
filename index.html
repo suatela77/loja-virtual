@@ -677,21 +677,47 @@ const R2=x=>Math.round(x*100)/100;
 const ymd=d=>{d=new Date(d);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const ymdISO=v=>{const [y,m,d]=v.split('-').map(Number);return new Date(y,m-1,d,12,0,0).toISOString()};
 const dbr=v=>v?new Date(v).toLocaleDateString('pt-BR'):'';
+const PGF={pix:'Pix',debito:'Débito',credito:'Crédito'};
+function txLoad(){try{return JSON.parse(localStorage.getItem('cb_taxas')||'{}')}catch(e){return {}}}
+function txSave(k,v){try{const t=txLoad();t[k]=v;localStorage.setItem('cb_taxas',JSON.stringify(t))}catch(e){}}
+function txKey(n){return n.pf==='debito'?'debito':n.pm==='parcelado'?'credito_'+(n.pp||2):'credito_avista'}
+function pgObj(n,total){if(!n.pf)return null;const o={forma:n.pf};
+  if(n.pf==='credito'){o.modo=n.pm==='parcelado'?'parcelado':'avista';o.parcelas=o.modo==='parcelado'?Math.min(12,Math.max(2,parseInt(n.pp)||2)):1;o.taxa=n.pr==='repassa'?'repassa':'assume'}
+  if(n.pf==='debito')o.taxa='assume';
+  if(o.taxa==='assume'){const t=parseFloat(String(n.pt||'0').replace(',','.'))||0;o.taxa_pct=Math.max(0,Math.min(t,30));o.taxa_valor=R2(total*o.taxa_pct/100);o.liquido=R2(total-o.taxa_valor)}else if(o.taxa==='repassa'){o.taxa_valor=0;o.liquido=R2(total)}
+  return o}
+function pgTaxa(p){const g=p&&p.pagamento;return g&&g.taxa==='assume'?Number(g.taxa_valor)||0:0}
+function pgLinha(p){const g=p.pagamento;if(!g||!g.forma)return '';
+  let t=(g.forma==='pix'?'⚡ ':'💳 ')+PGF[g.forma];
+  if(g.forma==='credito')t+=g.modo==='parcelado'?' parcelado em '+g.parcelas+'x':' à vista';
+  if(g.taxa==='repassa')t+=' · taxa paga pelo cliente na maquininha';
+  else if(g.taxa==='assume'&&g.taxa_pct>0)t+=` · taxa ${fmtp(g.taxa_pct)} (−${brl(g.taxa_valor)}) · você recebe <b>${brl(g.liquido)}</b>`;
+  return `<div class="muted pad">${t}</div>`}
+function pgForm(n){const tot=npTotal(n);const o=pgObj(n,tot);
+  const sel=(id,opts,v)=>`<select class="f" id="${id}">${opts.map(([k,l])=>`<option value="${k}" ${k===v?'selected':''}>${l}</option>`).join('')}</select>`;
+  let x=`<label for="pgf">💳 Forma de pagamento</label>`+sel('pgf',[['','Escolha…'],['pix','Pix'],['debito','Cartão de débito'],['credito','Cartão de crédito']],n.pf||'');
+  if(n.pf==='credito'){x+=`<div class="row" style="gap:8px"><div class="grow"><label for="pgm">Crédito</label>${sel('pgm',[['avista','À vista'],['parcelado','Parcelado']],n.pm||'avista')}</div>`+(n.pm==='parcelado'?`<div style="width:120px"><label for="pgp">Parcelas</label>${sel('pgp',[2,3,4,5,6,7,8,9,10,11,12].map(k=>[String(k),k+'x']),String(n.pp||2))}</div>`:'')+`</div>`;
+    x+=`<label for="pgr">Taxa da maquininha</label>`+sel('pgr',[['assume','Eu assumo (sai do que eu recebo)'],['repassa','Repassar ao cliente (a maquininha cobra dele)']],n.pr||'assume')}
+  if(n.pf==='debito'||(n.pf==='credito'&&n.pr!=='repassa'))x+=`<label for="pgt">Taxa (%)</label><input class="f" id="pgt" inputmode="decimal" placeholder="Ex.: 1,99" value="${h(n.pt||'')}">`;
+  x+=`<div class="muted" id="pgl" style="margin-top:4px">${pgResumo(o)}</div>`;return x}
+function pgResumo(o){if(!o)return '';if(o.forma==='pix')return 'Pix: sem taxa, você recebe o valor cheio.';
+  if(o.taxa==='repassa')return 'O cliente paga a taxa na maquininha. Você recebe o valor cheio: <b>'+brl(o.liquido)+'</b>';
+  return o.taxa_pct>0?`Taxa: −${brl(o.taxa_valor)} · você recebe <b>${brl(o.liquido)}</b>`:'Digite a taxa da maquininha para ver quanto você recebe.'}
 function lucroDe(p){const its=(p.itens||[]).filter(i=>i.id);const dsc=(p.itens||[]).filter(i=>!i.id&&/^desconto/i.test(String(i.nome))).reduce((t,i)=>t+i.preco*i.qtd,0);const rec=its.reduce((t,i)=>t+i.preco*i.qtd,0)+dsc;
   if(p.lucro!=null&&p.custo_total!=null)return{rec,custo:Number(p.custo_total),lucro:Number(p.lucro),ok:true,snap:true};
   let ok=its.length>0,custo=0;its.forEach(i=>{const c=adm.custos[i.id];if(c>0)custo+=c*i.qtd;else ok=false});
-  return{rec,custo,lucro:rec-custo,ok,snap:false}}
+  return{rec,custo,lucro:rec-custo-pgTaxa(p),ok,snap:false}}
 function snapItens(itens){const its=(itens||[]).filter(i=>i.id);if(!its.length)return{};let custo=0;
   for(const i of its){const c=adm.custos[i.id];if(!(c>0))return{};custo+=c*i.qtd}
   const dsc=(itens||[]).filter(i=>!i.id&&/^desconto/i.test(String(i.nome))).reduce((t,i)=>t+i.preco*i.qtd,0);const rec=its.reduce((t,i)=>t+i.preco*i.qtd,0)+dsc;return{custo_total:R2(custo),lucro:R2(rec-custo)}}
 async function patchPed(id,json){
   try{await api('/rest/v1/loja_pedidos?id=eq.'+id,{method:'PATCH',json})}
-  catch(e){if(/column|schema cache/i.test(e.message)){const j={...json};delete j.lucro;delete j.custo_total;delete j.arquivado;delete j.pago_valor;delete j.pago_em;delete j.pagamentos;
+  catch(e){if(/column|schema cache/i.test(e.message)){const j={...json};delete j.lucro;delete j.custo_total;delete j.arquivado;delete j.pago_valor;delete j.pago_em;delete j.pagamentos;if('pagamento' in j){delete j.pagamento;window.__semPag=1}
       if(Object.keys(j).length)return api('/rest/v1/loja_pedidos?id=eq.'+id,{method:'PATCH',json:j});
       throw new Error('Falta rodar o comando novo no Supabase (colunas de arquivo e lucro).')}
     throw e}}
-async function postPed(json){try{return await api('/rest/v1/loja_pedidos',{method:'POST',json})}catch(e){if(/column|schema cache/i.test(e.message)){const j={...json};delete j.lucro;delete j.custo_total;delete j.pago_em;return api('/rest/v1/loja_pedidos',{method:'POST',json:j})}throw e}}
-async function snapPend(){for(const p of adm.pedidos){if(p.lucro==null&&(p.status==='pago'||p.status==='enviado')){const sn=snapItens(p.itens);if(sn.lucro!=null){try{await patchPed(p.id,sn);p.custo_total=sn.custo_total;p.lucro=sn.lucro}catch(e){break}}}}}
+async function postPed(json){try{return await api('/rest/v1/loja_pedidos',{method:'POST',json})}catch(e){if(/column|schema cache/i.test(e.message)){const j={...json};delete j.lucro;delete j.custo_total;delete j.pago_em;if('pagamento' in j){delete j.pagamento;window.__semPag=1}return api('/rest/v1/loja_pedidos',{method:'POST',json:j})}throw e}}
+async function snapPend(){for(const p of adm.pedidos){if(p.lucro==null&&(p.status==='pago'||p.status==='enviado')){const sn=snapItens(p.itens);if(sn.lucro!=null){sn.lucro=R2(sn.lucro-pgTaxa(p));try{await patchPed(p.id,sn);p.custo_total=sn.custo_total;p.lucro=sn.lucro}catch(e){break}}}}}
 function lucroLinha(p){const L=lucroDe(p);
   if(!L.ok)return '<div class="muted pad">💰 Lucro: cadastre o valor de compra de todos os itens para calcular.</div>';
   return `<div class="lucro">💰 Lucro: <b>${brl(L.lucro)}</b> · ${fmtp(pct(L.rec,L.custo))} sobre a compra <span class="muted">(compra ${brl(L.custo)})${L.snap?'':' · estimado'}</span></div>`}
@@ -793,7 +819,7 @@ function aPedidos(){
   <div class="pn">${h(p.cliente_nome)}</div>
   <div class="muted">🛒 Compra: <b>${dbr(p.created_at)}</b>${p.pago_em?` · 💵 Pago em: <b>${dbr(p.pago_em)}</b>`:''}</div><div class="muted">📞 ${h(p.cliente_tel)}</div>
   <ul class="pit">${p.itens.map(i=>`<li><span class="q">${i.qtd}×</span><span class="n">${h(String(i.nome).toUpperCase())}<small>${brl(i.preco)} cada</small></span><span class="v">${brl(i.preco*i.qtd)}</span></li>`).join('')}</ul>
-  <div class="ptot"><span>Total</span><b>${brl(p.total)}</b></div>${lucroLinha(p)}${recLinha(p)}${adm.pay===p.id?pagHtml(p):''}
+  <div class="ptot"><span>Total</span><b>${brl(p.total)}</b></div>${pgLinha(p)}${lucroLinha(p)}${recLinha(p)}${adm.pay===p.id?pagHtml(p):''}
   ${p.endereco?`<div class="muted pad">📍 ${h(p.endereco)}</div>`:''}${ob?`<div class="muted pad">📝 ${h(ob)}</div>`:''}
   ${p.comprovante_url?`<p><a href="${h(p.comprovante_url)}" target="_blank"><img src="${h(p.comprovante_url)}" style="max-width:140px;border-radius:12px" alt="comprovante"></a></p>`:''}
   <select class="f" data-s="${p.id}">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===p.status?'selected':''}>${v[0]}</option>`).join('')}</select>
@@ -824,11 +850,11 @@ function aPedidos(){
   document.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.ed);if(!p)return;
     const fi=p.itens.find(i=>!i.id&&/^frete/i.test(String(i.nome)));const di=p.itens.find(i=>!i.id&&/^desconto/i.test(String(i.nome)));
     adm.np={edit:p.id,codigo:p.codigo,cid:p.cliente_id||'',nome:p.cliente_nome||'',tel:p.cliente_tel==='-'?'':(p.cliente_tel||''),end:p.endereco||'',salvar:false,tipo:/^\[ATACADO\]/.test(p.obs||'')?'atacado':'varejo',
-      itens:p.itens.filter(i=>i!==fi&&i!==di).map(i=>({id:i.id,nome:i.nome,preco:Number(i.preco),qtd:i.qtd,imagem:i.imagem||''})),frete:fi?String(fi.preco).replace('.',','):'',desc:di?String(Math.abs(di.preco)).replace('.',','):'',dtipo:'rs',obs:(p.obs||'').replace(/^\[ATACADO\]\s*/,''),status:p.status,pid:'',qtd:'1',dcompra:ymd(p.created_at),dc0:ymd(p.created_at),dpag:p.pago_em?ymd(p.pago_em):'',dp0:p.pago_em?ymd(p.pago_em):'',pe0:p.pago_em||''};
+      itens:p.itens.filter(i=>i!==fi&&i!==di).map(i=>({id:i.id,nome:i.nome,preco:Number(i.preco),qtd:i.qtd,imagem:i.imagem||''})),frete:fi?String(fi.preco).replace('.',','):'',desc:di?String(Math.abs(di.preco)).replace('.',','):'',dtipo:'rs',obs:(p.obs||'').replace(/^\[ATACADO\]\s*/,''),status:p.status,pid:'',qtd:'1',dcompra:ymd(p.created_at),dc0:ymd(p.created_at),dpag:p.pago_em?ymd(p.pago_em):'',dp0:p.pago_em?ymd(p.pago_em):'',pe0:p.pago_em||'',...(p.pagamento&&p.pagamento.forma?{pf:p.pagamento.forma,pm:p.pagamento.modo||'avista',pp:p.pagamento.parcelas||2,pr:p.pagamento.taxa||'assume',pt:p.pagamento.taxa_pct!=null?String(p.pagamento.taxa_pct).replace('.',','):''}:{})};
     aPedidos();window.scrollTo(0,0)});
   $('#npd').onclick=()=>{adm.np={cid:'',nome:'',tel:'',end:'',salvar:true,tipo:'varejo',itens:[],frete:'',obs:'',status:'aguardando_pagamento',pid:'',qtd:'1'};aPedidos()};
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.del);if(!p||!confirm('Excluir o pedido '+p.codigo+' de '+p.cliente_nome+'? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_pedidos?id=eq.'+p.id,{method:'DELETE'});adm.pedidos=adm.pedidos.filter(x=>x.id!==p.id);toast('Pedido excluído');drawAdmin()}catch(e){toast(e.message)}});
-  document.querySelectorAll('[data-s]').forEach(s=>s.onchange=async()=>{try{const po=adm.pedidos.find(p=>p.id===s.dataset.s);const pg=(s.value==='pago'||s.value==='enviado');const sn=pg?snapItens(po.itens):{};const pe=pg&&!po.pago_em?{pago_em:new Date().toISOString()}:{};await patchPed(s.dataset.s,{status:s.value,...sn,...pe});po.status=s.value;Object.assign(po,sn,pe);toast('Status atualizado ✅');drawAdmin()}catch(e){toast(e.message)}});
+  document.querySelectorAll('[data-s]').forEach(s=>s.onchange=async()=>{try{const po=adm.pedidos.find(p=>p.id===s.dataset.s);const pg=(s.value==='pago'||s.value==='enviado');const sn=pg?snapItens(po.itens):{};if(sn.lucro!=null)sn.lucro=R2(sn.lucro-pgTaxa(po));const pe=pg&&!po.pago_em?{pago_em:new Date().toISOString()}:{};await patchPed(s.dataset.s,{status:s.value,...sn,...pe});po.status=s.value;Object.assign(po,sn,pe);toast('Status atualizado ✅');drawAdmin()}catch(e){toast(e.message)}});
 }
 function aClientes(){
   if(adm.cedit)return aClienteForm();
@@ -870,6 +896,7 @@ function aPedidoForm(){
   const n=adm.np;if(n.dcompra===undefined){n.dcompra=ymd(new Date());n.dc0=n.dcompra;n.dpag='';n.dp0='';n.pe0=''}
   const cap=()=>{if(!$('#npst'))return;if($('#npc')&&!n.edit)n.cid=$('#npc').value;n.tipo=$('#nptp').value;if($('#npn')){n.nome=$('#npn').value;n.tel=$('#npt').value;n.end=$('#npe').value;if($('#nps'))n.salvar=$('#nps').checked}
     n.dcompra=$('#npdc').value;n.dpag=$('#npdp').value;n.frete=$('#npf').value;n.desc=$('#npd1').value;n.dtipo=$('#npd2').value;n.obs=$('#npo').value;n.status=$('#npst').value;n.pid=$('#npp').value;n.qtd=$('#npq').value;
+    if($('#pgf')){n.pf=$('#pgf').value;if($('#pgm'))n.pm=$('#pgm').value;if($('#pgp'))n.pp=$('#pgp').value;if($('#pgr'))n.pr=$('#pgr').value;if($('#pgt'))n.pt=$('#pgt').value}
     document.querySelectorAll('[data-pr]').forEach(e=>{n.itens[+e.dataset.pr].preco=parseFloat(String(e.value).replace(',','.'))||0});
     document.querySelectorAll('[data-qt]').forEach(e=>{n.itens[+e.dataset.qt].qtd=Math.max(1,parseInt(e.value)||1)})};
   const cli=n.edit?null:adm.clientes.find(c=>c.id===n.cid);
@@ -885,6 +912,7 @@ function aPedidoForm(){
   <label>Desconto (opcional)</label><div class="row" style="gap:8px"><div class="grow"><input class="f" id="npd1" inputmode="decimal" placeholder="Ex.: 10" value="${h(n.desc||'')}"></div><div style="width:110px"><select class="f" id="npd2"><option value="rs" ${n.dtipo!=='pct'?'selected':''}>R$</option><option value="pct" ${n.dtipo==='pct'?'selected':''}>%</option></select></div></div>${npDesc(n)>0?`<div class="muted" id="npdl">Desconto aplicado: −${brl(npDesc(n))}</div>`:'<div id="npdl"></div>'}
   <label for="npf">Frete (R$, opcional)</label><input class="f" id="npf" inputmode="decimal" value="${h(n.frete)}">
   <label for="npo">Observações</label><textarea class="f" id="npo" rows="2">${h(n.obs)}</textarea>
+  ${pgForm(n)}
   <label for="npst">Situação</label><select class="f" id="npst">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===n.status?'selected':''}>${v[0]}</option>`).join('')}</select>
   <p class="muted">O estoque dos produtos baixa sozinho quando o pedido é salvo (e volta se o pedido for cancelado ou excluído).</p>
   <div class="price" id="npt2">Total: ${brl(npTotal(n))}</div>
@@ -892,8 +920,12 @@ function aPedidoForm(){
   $('#npc').onchange=()=>{cap();aPedidoForm()};
   $('#nptp').onchange=()=>{cap();n.itens.forEach(i=>{const p=prods.find(x=>x.id===i.id);if(p)i.preco=precoDe(p,n.tipo)});aPedidoForm()};
   $('#npx').onclick=()=>{adm.np=null;aPedidos()};
+  const pgUp=()=>{const e=$('#pgl');if(e)e.innerHTML=pgResumo(pgObj(n,npTotal(n)))};
+  const pgRe=()=>{cap();if((n.pf==='debito'||n.pf==='credito')&&!n.pt){const t=txLoad()[txKey(n)];if(t)n.pt=t}aPedidoForm()};
+  ['#pgf','#pgm','#pgp','#pgr'].forEach(id=>{const e=$(id);if(e)e.onchange=()=>{if(id!=='#pgr'&&$('#pgt'))n.pt='';pgRe()}});
+  if($('#pgt'))$('#pgt').oninput=()=>{cap();pgUp()};
   document.querySelectorAll('[data-ri]').forEach(b=>b.onclick=()=>{cap();n.itens.splice(+b.dataset.ri,1);aPedidoForm()});
-  document.querySelectorAll('[data-pr],[data-qt],#npf,#npd1').forEach(e=>e.oninput=()=>{cap();$('#npt2').textContent='Total: '+brl(npTotal(n));$('#npdl').textContent=npDesc(n)>0?'Desconto aplicado: −'+brl(npDesc(n)):''});$('#npd2').onchange=()=>{cap();$('#npt2').textContent='Total: '+brl(npTotal(n));$('#npdl').textContent=npDesc(n)>0?'Desconto aplicado: −'+brl(npDesc(n)):''};
+  document.querySelectorAll('[data-pr],[data-qt],#npf,#npd1').forEach(e=>e.oninput=()=>{cap();$('#npt2').textContent='Total: '+brl(npTotal(n));pgUp();$('#npdl').textContent=npDesc(n)>0?'Desconto aplicado: −'+brl(npDesc(n)):''});$('#npd2').onchange=()=>{cap();$('#npt2').textContent='Total: '+brl(npTotal(n));$('#npdl').textContent=npDesc(n)>0?'Desconto aplicado: −'+brl(npDesc(n)):''};
   $('#npa').onclick=()=>{cap();const p=prods.find(x=>x.id===n.pid);if(!p){toast('Escolha o produto');return}
     const q=Math.max(1,parseInt(n.qtd)||1);const ex=n.itens.find(i=>i.id===p.id);if(ex)ex.qtd+=q;else n.itens.push({id:p.id,nome:p.nome,preco:precoDe(p,n.tipo),qtd:q,imagem:(p.imagens&&p.imagens[0])||''});
     n.pid='';n.qtd='1';aPedidoForm()};
@@ -906,14 +938,19 @@ function aPedidoForm(){
     const itens=n.itens.map(i=>({id:i.id,nome:i.nome,preco:i.preco,qtd:i.qtd,imagem:i.imagem}));
     if(npDesc(n)>0)itens.push({id:null,nome:'Desconto',preco:-npDesc(n),qtd:1,imagem:''});
     if(fr>0)itens.push({id:null,nome:'Frete',preco:fr,qtd:1,imagem:''});
+    if(n.pf&&n.pf!=='pix'&&!(n.pf==='credito'&&n.pr==='repassa')&&!(parseFloat(String(n.pt||'').replace(',','.'))>0)&&!confirm('Você não digitou a taxa da maquininha. Salvar assim mesmo (sem taxa)?'))return;
+    const pagamento=pgObj(n,npTotal(n));if(pagamento&&pagamento.taxa_pct>0)txSave(txKey(n),String(pagamento.taxa_pct).replace('.',','));
+    const tx=pagamento&&pagamento.taxa==='assume'?pagamento.taxa_valor:0;
+    const snp=its=>{const o=snapItens(its);if(o.lucro!=null)o.lucro=R2(o.lucro-tx);return o};
+    window.__semPag=0;
     $('#npsv').disabled=true;$('#npsv').textContent='Salvando...';
     try{
-      if(n.edit){await patchPed(n.edit,{cliente_nome:nome,cliente_tel:tel||'-',endereco:end,obs:((n.tipo==='atacado'?'[ATACADO] ':'')+n.obs.trim()).trim(),itens,total:npTotal(n),status:n.status,...snapItens(itens),...datasPed(n)});
-        adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc');adm.np=null;toast('Pedido atualizado! ✅');drawAdmin();return}
+      if(n.edit){await patchPed(n.edit,{cliente_nome:nome,cliente_tel:tel||'-',endereco:end,obs:((n.tipo==='atacado'?'[ATACADO] ':'')+n.obs.trim()).trim(),itens,total:npTotal(n),status:n.status,pagamento,...snp(itens),...datasPed(n)});
+        adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc');adm.np=null;toast(window.__semPag?'Pedido salvo, mas falta rodar o comando no Supabase para guardar a forma de pagamento':'Pedido atualizado! ✅');drawAdmin();return}
       if(!cli&&n.salvar){const r=await api('/rest/v1/loja_clientes',{method:'POST',json:{nome,tel,endereco:end},headers:{Prefer:'return=representation'}});if(r&&r[0])cid=r[0].id;adm.clientes=await api('/rest/v1/loja_clientes?select=*&order=nome.asc')}
       const codigo=Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
-      await postPed({codigo,cliente_nome:nome,cliente_tel:tel||'-',endereco:end,obs:((n.tipo==='atacado'?'[ATACADO] ':'')+n.obs.trim()).trim(),itens,total:npTotal(n),status:n.status,cliente_id:cid,origem:'manual',...datasPed(n,true),...((n.status==='pago'||n.status==='enviado')?snapItens(itens):{})});
-      adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc');adm.np=null;toast('Pedido salvo! ✅');drawAdmin();
+      await postPed({codigo,cliente_nome:nome,cliente_tel:tel||'-',endereco:end,obs:((n.tipo==='atacado'?'[ATACADO] ':'')+n.obs.trim()).trim(),itens,total:npTotal(n),status:n.status,cliente_id:cid,origem:'manual',pagamento,...datasPed(n,true),...((n.status==='pago'||n.status==='enviado')?snp(itens):{})});
+      adm.pedidos=await api('/rest/v1/loja_pedidos?select=*&order=created_at.desc');adm.np=null;toast(window.__semPag?'Pedido salvo, mas falta rodar o comando no Supabase para guardar a forma de pagamento':'Pedido salvo! ✅');drawAdmin();
     }catch(e){toast(e.message);$('#npsv').disabled=false;$('#npsv').textContent='Salvar pedido'}};
 }
 document.addEventListener('click',async ev=>{const b=ev.target.closest&&ev.target.closest('[data-eta]');if(!b)return;
