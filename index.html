@@ -692,7 +692,7 @@ function pgLinha(p){const g=p.pagamento;if(!g||!g.forma)return '';
   if(g.forma==='credito')t+=g.modo==='parcelado'?' parcelado em '+g.parcelas+'x':' à vista';
   if(g.taxa==='repassa')t+=' · taxa paga pelo cliente na maquininha';
   else if(g.taxa==='assume'&&g.taxa_pct>0)t+=` · taxa ${fmtp(g.taxa_pct)} (−${brl(g.taxa_valor)}) · você recebe <b>${brl(g.liquido)}</b>`;
-  return `<div class="muted pad">${t}</div>`}
+  return `<div class="lucro" style="background:#eef2ff;color:#3730a3">${t}</div>`}
 function pgForm(n){const tot=npTotal(n);const o=pgObj(n,tot);
   const sel=(id,opts,v)=>`<select class="f" id="${id}">${opts.map(([k,l])=>`<option value="${k}" ${k===v?'selected':''}>${l}</option>`).join('')}</select>`;
   let x=`<label for="pgf">💳 Forma de pagamento</label>`+sel('pgf',[['','Escolha…'],['pix','Pix'],['debito','Cartão de débito'],['credito','Cartão de crédito']],n.pf||'');
@@ -724,15 +724,15 @@ function lucroLinha(p){const L=lucroDe(p);
 function visitasHtml(){const v=adm.vis;if(!v)return '';const c=(t,n)=>`<div style="flex:1 1 0;min-width:0;text-align:center"><div style="font-size:22px;font-weight:900;color:var(--ink)">${n||0}</div><div class="muted" style="font-size:11px;white-space:nowrap">${t}</div></div>`;
   return `<div class="box" style="margin:12px 0"><b>👀 Visitantes</b> <span class="muted" style="font-size:12px">(pessoas diferentes)</span><div style="display:flex;gap:4px;margin-top:8px">${c('Hoje',v.hoje)}${c('Ontem',v.ontem)}${c('7 dias',v.d7)}${c('30 dias',v.d30)}${c('Total',v.total)}</div></div>`}
 function resumoHtml(){const now=new Date();const f=p=>{const d=new Date(p.created_at);return adm.per==='tudo'||(adm.per==='mes'&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear())||(adm.per==='ant'&&((d.getMonth()+1)%12===now.getMonth()&&(now.getMonth()===0?d.getFullYear()===now.getFullYear()-1:d.getFullYear()===now.getFullYear())))};
-  const l=adm.pedidos.filter(p=>(p.status==='pago'||p.status==='enviado')&&f(p));let rec=0,custo=0,lu=0,inc=0;
-  l.forEach(p=>{const L=lucroDe(p);if(L.ok){rec+=L.rec;custo+=L.custo;lu+=L.lucro}else inc++});
+  const l=adm.pedidos.filter(p=>(p.status==='pago'||p.status==='enviado')&&f(p));let rec=0,custo=0,lu=0,inc=0,txs=0;
+  l.forEach(p=>{txs+=pgTaxa(p);const L=lucroDe(p);if(L.ok){rec+=L.rec;custo+=L.custo;lu+=L.lucro}else inc++});
   const chip=(k,t)=>`<button class="chip ${adm.per===k?'on':''}" data-per="${k}">${t}</button>`;
   return `<div class="box" style="background:#f5f0ff"><b>💰 Resumo de vendas</b><div style="margin:8px 0">${chip('mes','Este mês')}${chip('ant','Mês passado')}${chip('tudo','Tudo')}</div>
   <div>Vendas pagas/entregues: <b>${l.length}</b></div>
   <div style="margin:4px 0">⏳ A receber (todos os pedidos): <b>${brl(adm.pedidos.reduce((t,p)=>t+aReceber(p),0))}</b> <span class="muted">(${adm.pedidos.filter(p=>aReceber(p)>0).length} pedido(s))</span></div>
-  <div>💵 Receita: <b>${brl(rec)}</b></div><div>🧾 Despesa (compra): <b>${brl(custo)}</b></div>
+  <div>💵 Receita (valor das vendas): <b>${brl(rec)}</b></div>${txs>0?`<div>💳 Taxas das maquininhas: <b>−${brl(txs)}</b></div><div>✅ Você recebeu de fato: <b>${brl(R2(rec-txs))}</b></div>`:''}<div>🧾 Despesa (compra): <b>${brl(custo)}</b></div>
   <div class="price" style="font-size:24px">Lucro: ${brl(lu)}${custo>0?` <span style="font-size:15px">(${fmtp(pct(rec,custo))})</span>`:''}</div>${inc?`<div class="muted">${inc} venda(s) fora da conta: falta o valor de compra de algum item.</div>`:''}
-  ${rankHtml(l)}<details style="margin-top:8px"><summary><b>Ver extrato de cada venda</b></summary>${l.length?l.map(p=>{const L=lucroDe(p);return `<div style="border-top:1px dashed #cbb;padding:8px 0"><b>${h(p.cliente_nome)}</b> <span class="muted">· ${new Date(p.created_at).toLocaleDateString('pt-BR')} · ${p.codigo}</span><div>💵 Receita: ${brl(L.rec)}</div>${L.ok?`<div>🧾 Despesa: ${brl(L.custo)}</div><div style="color:#166534"><b>💰 Lucro: ${brl(L.lucro)}</b> (${fmtp(pct(L.rec,L.custo))})</div>`:'<div class="muted">Falta valor de compra</div>'}</div>`}).join(''):'<div class="muted">Nenhuma venda no período.</div>'}</details></div>`}
+  ${rankHtml(l)}<details style="margin-top:8px"><summary><b>Ver extrato de cada venda</b></summary>${l.length?l.map(p=>{const L=lucroDe(p);return `<div style="border-top:1px dashed #cbb;padding:8px 0"><b>${h(p.cliente_nome)}</b> <span class="muted">· ${new Date(p.created_at).toLocaleDateString('pt-BR')} · ${p.codigo}</span><div>💵 Receita: ${brl(L.rec)}</div>${pgTaxa(p)>0?`<div>💳 Taxa do cartão: −${brl(pgTaxa(p))} · você recebeu <b>${brl(R2(L.rec-pgTaxa(p)))}</b></div>`:''}${L.ok?`<div>🧾 Despesa: ${brl(L.custo)}</div><div style="color:#166534"><b>💰 Lucro: ${brl(L.lucro)}</b> (${fmtp(pct(L.rec,L.custo))})</div>`:'<div class="muted">Falta valor de compra</div>'}</div>`}).join(''):'<div class="muted">Nenhuma venda no período.</div>'}</details></div>`}
 function aReceber(p){if(p.status==='cancelado')return 0;const t=Number(p.total)||0;const pg=p.pago_valor;
   if(pg==null&&(p.status==='pago'||p.status==='enviado'))return 0;return Math.max(0,R2(t-(Number(pg)||0)))}
 function recLinha(p){if(p.pago_valor==null)return '';const f=aReceber(p);
