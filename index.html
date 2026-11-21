@@ -283,7 +283,7 @@ const GKEY='AIzaSyBrR8pi4BhyjFP_DcaIoZTbiMATogcuqeM';
       inp.value=d.location?end+' ('+d.location.latitude.toFixed(6)+', '+d.location.longitude.toFixed(6)+')':end;
     }catch(e){tok=null;inp.value=it.main+(it.sec?', '+it.sec:'')}
     inp.dispatchEvent(new Event('input',{bubbles:true}));inp.dispatchEvent(new Event('change',{bubbles:true}))}
-  const IDS={npe:1,cen:1};
+  const IDS={npe:1,cen:1,fend:1};
   document.addEventListener('input',e=>{const t=e.target;if(!t||!IDS[t.id]||e.isTrusted===false)return;alvo=t;t.setAttribute('autocomplete','off');t.placeholder='Digite o endereço e escolha na lista';clearTimeout(tm);tm=setTimeout(()=>busca(t),300)},true);
   document.addEventListener('focusout',e=>{if(e.target===alvo)setTimeout(fecha,200)},true);
   window.addEventListener('scroll',fecha,true);
@@ -550,7 +550,11 @@ async function freteCore(cep,num,txt){
 async function calcFrete(){
   const msg=$('#fmsg'),btn=$('#fcalc');
   btn.disabled=true;btn.textContent='Calculando...';msg.textContent='';
-  try{fr=await freteCore($('#fcep').value,$('#fnum').value,$('#ce').value);if(fr.end&&!$('#ce').value.trim())$('#ce').value=fr.end;else if(fr.end&&($('#fcep').value||'').replace(/\D/g,'').length===8)$('#ce').value=fr.end}
+  try{const fe=($('#fend')&&$('#fend').value||'').replace(/\s*…\s*$/,'').trim(),cepv=($('#fcep').value||'').replace(/\D/g,'');
+    if(fe&&cepv.length!==8){let e2=fe;
+      if(!COORD.test(e2)&&GKEY){try{const q=await fetch('https://places.googleapis.com/v1/places:searchText',{method:'POST',headers:{'Content-Type':'application/json','X-Goog-Api-Key':GKEY,'X-Goog-FieldMask':'places.location'},body:JSON.stringify({textQuery:e2+(/brasil|brazil/i.test(e2)?'':', Brasil'),languageCode:'pt-BR',regionCode:'BR',locationBias:{circle:{center:{latitude:-22.8794,longitude:-42.0186},radius:50000}}})});const dq=await q.json();const pl=dq.places&&dq.places[0];if(pl&&pl.location)e2+=' ('+pl.location.latitude.toFixed(6)+', '+pl.location.longitude.toFixed(6)+')'}catch(x){}}
+      fr=await freteCore('',$('#fnum').value,e2);if(!$('#ce').value.trim())$('#ce').value=(fe.replace(COORD,'').replace(/\(\s*\)/,'').trim()+($('#fnum').value?', '+$('#fnum').value:''))}
+    else{fr=await freteCore($('#fcep').value,$('#fnum').value,$('#ce').value);if(fr.end&&!$('#ce').value.trim())$('#ce').value=fr.end;else if(fr.end&&($('#fcep').value||'').replace(/\D/g,'').length===8)$('#ce').value=fr.end}}
   catch(e){fr=null;msg.textContent=e.message||'Erro ao calcular. Tente de novo.'}
   btn.disabled=false;btn.textContent='Calcular frete';freteUI()}
 async function freteNoPonto(pt,rot){
@@ -586,7 +590,8 @@ function vCarrinho(){
   <label><input type="radio" name="ftipo" value="retirada" ${fr&&fr.tipo==='retirada'?'checked':''}> Retirar na loja (sem frete)</label>
   <div id="fbox" style="${fr&&fr.tipo==='retirada'?'display:none':''}">
   <label for="fcep">CEP</label><input class="f" id="fcep" inputmode="numeric" maxlength="9" placeholder="00000-000" autocomplete="postal-code">
-  <label for="fnum">Número / complemento</label><input class="f" id="fnum" placeholder="Ex.: 120, apto 3">
+  <label for="fend">Não sabe o CEP? Digite o endereço</label><input class="f" id="fend" placeholder="Rua, número e bairro" autocomplete="off">
+    <label for="fnum">Número / complemento</label><input class="f" id="fnum" placeholder="Ex.: 120, apto 3">
   <p></p><button class="btn violet block" id="fcalc">Calcular frete</button>
   <div class="row" style="gap:8px;margin-top:8px"><button class="btn ghost grow" id="fgps" type="button">📍 Usar minha localização</button><button class="btn ghost grow" id="fmapa" type="button">🗺️ Marcar no mapa</button></div>
   <p class="muted" style="font-size:13px">Dica: se estiver no local da entrega, toque em <b>Usar minha localização</b>. Assim a entrega chega no ponto certo.</p>
