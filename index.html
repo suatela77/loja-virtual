@@ -957,7 +957,7 @@ function aPedidoForm(){
   <p></p><button class="btn block ghost" id="npa">+ Adicionar item</button>
   <div class="row" style="gap:8px"><div class="grow"><label for="npdc">🛒 Data da compra</label><input class="f" type="date" id="npdc" value="${h(n.dcompra)}"></div><div class="grow"><label for="npdp">💵 Data do pagamento</label><input class="f" type="date" id="npdp" value="${h(n.dpag)}"></div></div><p class="muted" style="margin:2px 0 0">A data do pagamento é preenchida sozinha quando o pedido vira "Pago". Deixe vazia se ainda não pagou.</p>
   <label>Desconto (opcional)</label><div class="row" style="gap:8px"><div class="grow"><input class="f" id="npd1" inputmode="decimal" placeholder="Ex.: 10" value="${h(n.desc||'')}"></div><div style="width:110px"><select class="f" id="npd2"><option value="rs" ${n.dtipo!=='pct'?'selected':''}>R$</option><option value="pct" ${n.dtipo==='pct'?'selected':''}>%</option></select></div></div>${npDesc(n)>0?`<div class="muted" id="npdl">Desconto aplicado: −${brl(npDesc(n))}</div>`:'<div id="npdl"></div>'}
-  <label for="npf">Frete (R$, opcional)</label><input class="f" id="npf" inputmode="decimal" value="${h(n.frete)}">
+  <label for="npf">Frete (R$, opcional)</label><input class="f" id="npf" inputmode="decimal" value="${h(n.frete)}"><button class="btn block ghost" id="npfc" style="margin-top:6px">🚚 Calcular frete pelo endereço</button><div id="npfr" class="muted" style="margin:6px 0"></div>
   <label for="npo">Observações</label><textarea class="f" id="npo" rows="2">${h(n.obs)}</textarea>
   ${pgForm(n)}
   <label for="npst">Situação</label><select class="f" id="npst">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===n.status?'selected':''}>${v[0]}</option>`).join('')}</select>
@@ -972,6 +972,14 @@ function aPedidoForm(){
   ['#pgf','#pgm','#pgp','#pgr'].forEach(id=>{const e=$(id);if(e)e.onchange=()=>{if(id!=='#pgr'&&$('#pgt'))n.pt='';pgRe()}});
   if($('#pgt'))$('#pgt').oninput=()=>{cap();pgUp()};
   document.querySelectorAll('[data-ri]').forEach(b=>b.onclick=()=>{cap();n.itens.splice(+b.dataset.ri,1);aPedidoForm()});
+  $('#npfc').onclick=async()=>{cap();const bt=$('#npfc'),rs=$('#npfr');const end=($('#npe')&&$('#npe').value)||(cli&&cli.endereco)||n.end||'';
+    if(!end.trim()){rs.textContent='Digite o endereço do cliente primeiro.';return}
+    bt.disabled=true;rs.textContent='Calculando…';
+    try{const r=await freteCore('','',end);$('#npf').value=String(r.valor.toFixed(2)).replace('.',',');n.frete=$('#npf').value;
+      rs.innerHTML='📍 <b>'+String(r.km).replace('.',',')+' km</b> · frete <b>'+brl(r.valor)+'</b> preenchido acima. Pode editar o valor se quiser.'+(r.aprox?' (endereço localizado pela região: valor aproximado)':'');
+      $('#npt2').textContent='Total: '+brl(npTotal(n));pgUp()}
+    catch(e){rs.textContent=e.message||'Não consegui calcular. Digite o frete manualmente.'}
+    bt.disabled=false};
   document.querySelectorAll('[data-pr],[data-qt],#npf,#npd1').forEach(e=>e.oninput=()=>{cap();$('#npt2').textContent='Total: '+brl(npTotal(n));pgUp();$('#npdl').textContent=npDesc(n)>0?'Desconto aplicado: −'+brl(npDesc(n)):''});$('#npd2').onchange=()=>{cap();$('#npt2').textContent='Total: '+brl(npTotal(n));$('#npdl').textContent=npDesc(n)>0?'Desconto aplicado: −'+brl(npDesc(n)):''};
   $('#npa').onclick=()=>{cap();const p=prods.find(x=>x.id===n.pid);if(!p){toast('Escolha o produto');return}
     const q=Math.max(1,parseInt(n.qtd)||1);const ex=n.itens.find(i=>i.id===p.id);if(ex)ex.qtd+=q;else n.itens.push({id:p.id,nome:p.nome,preco:precoDe(p,n.tipo),qtd:q,imagem:(p.imagens&&p.imagens[0])||''});
