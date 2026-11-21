@@ -57,7 +57,7 @@ header.top .wrap{display:flex;align-items:center;gap:10px;padding-top:10px;paddi
 .pcard:active{transform:scale(.97)}
 .pimg{aspect-ratio:1;background:var(--c);display:grid;place-items:center;font-size:54px;position:relative}
 .pimg img{width:100%;height:100%;object-fit:contain;background:#fff;display:block}
-.pimg i{position:absolute;top:8px;left:8px;background:#fff;color:var(--ink);border-radius:999px;font-style:normal;font-weight:800;font-size:12px;padding:3px 10px}
+.pimg i{position:absolute;top:10px;left:10px;background:#dc2626;color:#fff;border-radius:999px;font-style:normal;font-weight:900;font-size:17px;letter-spacing:.5px;text-transform:uppercase;padding:7px 16px;box-shadow:0 3px 10px rgba(0,0,0,.35);border:2px solid #fff}.pcard.sold .pimg img{opacity:.45;filter:grayscale(.6)}.pcard .soldbtn{display:block;text-align:center;background:#dc2626;color:#fff;font-weight:900;font-size:17px;border-radius:14px;padding:13px 8px;margin-top:6px}
 .pbody{padding:10px 12px 12px;display:flex;flex-direction:column;gap:6px;flex:1}
 .pbody h3{font-size:17px}
 .price{font-family:'Baloo 2';font-weight:800;font-size:22px;color:var(--pink)}
@@ -393,7 +393,7 @@ function vHome(){
   document.querySelectorAll('.chip[data-c]').forEach(b=>b.onclick=()=>{cat=b.dataset.c;vHome()});
 }
 function card(p,i){const c=COLORS[i%COLORS.length];
-  return `<div class="pcard" style="--c:${c}"><a href="#/produto/${p.id}"><div class="pimg">${foto(p)?`<img loading="lazy" src="${h(foto(p))}" alt="${h(p.nome)}">`:emoji[i%emoji.length]}${p.estoque===0?'<i>Esgotado</i>':''}</div></a><div class="pbody"><a href="#/produto/${p.id}"><h3>${nb(p.nome)}</h3></a><div class="pbuy"><span class="price">${brl(pv(p))}</span>${p.estoque===0?'':`<button data-add="${p.id}" aria-label="Adicionar ao carrinho"><span>Comprar</span></button>`}</div></div></div>`}
+  return `<div class="pcard${p.estoque===0?' sold':''}" style="--c:${c}"><a href="#/produto/${p.id}"><div class="pimg">${foto(p)?`<img loading="lazy" src="${h(foto(p))}" alt="${h(p.nome)}">`:emoji[i%emoji.length]}${p.estoque===0?'<i>Esgotado</i>':''}</div></a><div class="pbody"><a href="#/produto/${p.id}"><h3>${nb(p.nome)}</h3></a><div class="pbuy"><span class="price">${brl(pv(p))}</span>${p.estoque===0?'':`<button data-add="${p.id}" aria-label="Adicionar ao carrinho"><span>Comprar</span></button>`}</div>${p.estoque===0?'<div class="soldbtn">ESGOTADO</div>':''}</div></div>`}
 
 function vProduto(id){
   const p=prod(id);if(!p||!noCat(p)){location.hash='#/';return}
@@ -402,7 +402,7 @@ function vProduto(id){
   <div class="box"><h1>${h(p.nome)}</h1><div class="price" style="font-size:32px;margin:8px 0">${brl(pv(p))}</div>${ATAC&&pv(p)<Number(p.preco)?`<div class="muted">Varejo: <s>${brl(p.preco)}</s> · preço de atacado</div>`:''}
   ${p.categoria&&p.categoria.trim()?`<span class="tag" style="background:var(--violet)">${h(p.categoria)}</span>`:''}
   <p style="white-space:pre-wrap;line-height:1.5;text-align:left;font-size:17px">${h(p.descricao)}</p></div></div>
-  <div class="bar"><div class="price">${brl(pv(p))}</div>${p.estoque===0?'<span class="muted grow">Esgotado</span>':`<button class="btn grow" id="add">Colocar no carrinho 🛒</button>`}</div>`;
+  <div class="bar"><div class="price">${brl(pv(p))}</div>${p.estoque===0?'<span class="grow" style="color:#dc2626;font-weight:900;font-size:20px">ESGOTADO</span>':`<button class="btn grow" id="add">Colocar no carrinho 🛒</button>`}</div>`;
   const a=$('#add');if(a)a.onclick=()=>addCart(p.id);
   document.querySelectorAll('.gal img').forEach((im,i)=>im.onclick=()=>lightbox(p.imagens,i));
 }
