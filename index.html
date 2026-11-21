@@ -975,7 +975,11 @@ function aPedidoForm(){
   $('#npfc').onclick=async()=>{cap();const bt=$('#npfc'),rs=$('#npfr');const end=($('#npe')&&$('#npe').value)||(cli&&cli.endereco)||n.end||'';
     if(!end.trim()){rs.textContent='Digite o endereço do cliente primeiro.';return}
     bt.disabled=true;rs.textContent='Calculando…';
-    try{const r=await freteCore('','',end);$('#npf').value=String(r.valor.toFixed(2)).replace('.',',');n.frete=$('#npf').value;
+    try{let e2=end.replace(/\s*…\s*$/,'').trim();
+      if(!COORD.test(e2)&&!/\d{5}-?\d{3}/.test(e2)&&typeof GKEY!=='undefined'&&GKEY){
+        try{const q=await fetch('https://places.googleapis.com/v1/places:searchText',{method:'POST',headers:{'Content-Type':'application/json','X-Goog-Api-Key':GKEY,'X-Goog-FieldMask':'places.location,places.formattedAddress'},body:JSON.stringify({textQuery:e2+(/brasil|brazil|, RJ/i.test(e2)?'':', Brasil'),languageCode:'pt-BR',regionCode:'BR',locationBias:{circle:{center:{latitude:-22.8794,longitude:-42.0186},radius:50000}}})});
+          const dq=await q.json();const pl=dq.places&&dq.places[0];if(pl&&pl.location)e2=e2+' ('+pl.location.latitude.toFixed(6)+', '+pl.location.longitude.toFixed(6)+')'}catch(x){}}
+      const r=await freteCore('','',e2);$('#npf').value=String(r.valor.toFixed(2)).replace('.',',');n.frete=$('#npf').value;
       rs.innerHTML='📍 <b>'+String(r.km).replace('.',',')+' km</b> · frete <b>'+brl(r.valor)+'</b> preenchido acima. Pode editar o valor se quiser.'+(r.aprox?' (endereço localizado pela região: valor aproximado)':'');
       $('#npt2').textContent='Total: '+brl(npTotal(n));pgUp()}
     catch(e){rs.textContent=e.message||'Não consegui calcular. Digite o frete manualmente.'}
