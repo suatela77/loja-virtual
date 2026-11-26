@@ -739,17 +739,23 @@ const R2=x=>Math.round(x*100)/100;
 const ymd=d=>{d=new Date(d);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const ymdISO=v=>{const [y,m,d]=v.split('-').map(Number);return new Date(y,m-1,d,12,0,0).toISOString()};
 const dbr=v=>v?new Date(v).toLocaleDateString('pt-BR'):'';
-const PGF={pix:'Pix',debito:'Débito',credito:'Crédito'};
+const PGF={pix:'Pix',debito:'Débito',credito:'Crédito',fiado:'Fiado'};
+function fiadoDatas(ini,n){const [y,m,d]=ini.split('-').map(Number);const out=[];for(let k=0;k<n;k++){const t=new Date(y,m-1+k,1);const ult=new Date(t.getFullYear(),t.getMonth()+1,0).getDate();out.push(ymd(new Date(t.getFullYear(),t.getMonth(),Math.min(d,ult))))}return out}
+function fvDef(n){if(n.fv)return n.fv;const d=new Date();d.setDate(d.getDate()+30);return ymd(d)}
 function txLoad(){try{return JSON.parse(localStorage.getItem('cb_taxas')||'{}')}catch(e){return {}}}
 function txSave(k,v){try{const t=txLoad();t[k]=v;localStorage.setItem('cb_taxas',JSON.stringify(t))}catch(e){}}
 function txKey(n){return n.pf==='debito'?'debito':n.pm==='parcelado'?'credito_'+(n.pp||2):'credito_avista'}
 function pgObj(n,total){if(!n.pf)return null;const o={forma:n.pf};
+  if(n.pf==='fiado'){const k=Math.min(12,Math.max(1,parseInt(n.pp)||1));const ds=fiadoDatas(fvDef(n),k);const b=R2(total/k);o.parcelas=k;o.parc=ds.map((d,i)=>({d,v:i<k-1?b:R2(total-b*(k-1))}));o.taxa_valor=0;o.liquido=R2(total);return o}
   if(n.pf==='credito'){o.modo=n.pm==='parcelado'?'parcelado':'avista';o.parcelas=o.modo==='parcelado'?Math.min(12,Math.max(2,parseInt(n.pp)||2)):1;o.taxa=n.pr==='repassa'?'repassa':'assume'}
   if(n.pf==='debito')o.taxa='assume';
   if(o.taxa==='assume'){const t=parseFloat(String(n.pt||'0').replace(',','.'))||0;o.taxa_pct=Math.max(0,Math.min(t,30));o.taxa_valor=R2(total*o.taxa_pct/100);o.liquido=R2(total-o.taxa_valor)}else if(o.taxa==='repassa'){o.taxa_valor=0;o.liquido=R2(total)}
   return o}
 function pgTaxa(p){const g=p&&p.pagamento;return g&&g.taxa==='assume'?Number(g.taxa_valor)||0:0}
 function pgLinha(p){const g=p.pagamento;if(!g||!g.forma)return '';
+  if(g.forma==='fiado'&&Array.isArray(g.parc)){const pago=Number(p.pago_valor)||0;let cum=0;const hoje=ymd(new Date());
+    const ln=g.parc.map(q=>{cum=R2(cum+q.v);const ok=pago+0.005>=cum;const atr=!ok&&q.d<hoje&&p.status!=='cancelado';return `${ok?'✅':atr?'🔴':'⏳'} ${dbr(ymdISO(q.d))} · ${brl(q.v)}${ok?' · pago':atr?' · <b>vencida</b>':''}`}).join('<br>');
+    return `<div class="lucro" style="background:#fef9c3;color:#713f12">📒 <b>Fiado em ${g.parcelas}x</b><br>${ln}</div>`}
   let t=(g.forma==='pix'?'⚡ ':'💳 ')+PGF[g.forma];
   if(g.forma==='credito')t+=g.modo==='parcelado'?' parcelado em '+g.parcelas+'x':' à vista';
   if(g.taxa==='repassa')t+=' · taxa paga pelo cliente na maquininha';
@@ -757,12 +763,14 @@ function pgLinha(p){const g=p.pagamento;if(!g||!g.forma)return '';
   return `<div class="lucro" style="background:#eef2ff;color:#3730a3">${t}</div>`}
 function pgForm(n){const tot=npTotal(n);const o=pgObj(n,tot);
   const sel=(id,opts,v)=>`<select class="f" id="${id}">${opts.map(([k,l])=>`<option value="${k}" ${k===v?'selected':''}>${l}</option>`).join('')}</select>`;
-  let x=`<label for="pgf">💳 Forma de pagamento</label>`+sel('pgf',[['','Escolha…'],['pix','Pix'],['debito','Cartão de débito'],['credito','Cartão de crédito']],n.pf||'');
+  let x=`<label for="pgf">💳 Forma de pagamento</label>`+sel('pgf',[['','Escolha…'],['pix','Pix'],['debito','Cartão de débito'],['credito','Cartão de crédito'],['fiado','Fiado (a prazo)']],n.pf||'');
+  if(n.pf==='fiado')x+=`<div class="row" style="gap:8px"><div class="grow"><label for="pgfv">1º vencimento</label><input class="f" id="pgfv" type="date" value="${fvDef(n)}"></div><div style="width:120px"><label for="pgp">Dividir em</label>${sel('pgp',[1,2,3,4,5,6,7,8,9,10,11,12].map(k=>[String(k),k+'x']),String(Math.min(12,Math.max(1,parseInt(n.pp)||1))))}</div></div>`;
   if(n.pf==='credito'){x+=`<div class="row" style="gap:8px"><div class="grow"><label for="pgm">Crédito</label>${sel('pgm',[['avista','À vista'],['parcelado','Parcelado']],n.pm||'avista')}</div>`+(n.pm==='parcelado'?`<div style="width:120px"><label for="pgp">Parcelas</label>${sel('pgp',[2,3,4,5,6,7,8,9,10,11,12].map(k=>[String(k),k+'x']),String(n.pp||2))}</div>`:'')+`</div>`;
     x+=`<label for="pgr">Taxa da maquininha</label>`+sel('pgr',[['assume','Eu assumo (sai do que eu recebo)'],['repassa','Repassar ao cliente (a maquininha cobra dele)']],n.pr||'assume')}
   if(n.pf==='debito'||(n.pf==='credito'&&n.pr!=='repassa'))x+=`<label for="pgt">Taxa (%)</label><input class="f" id="pgt" inputmode="decimal" placeholder="Ex.: 1,99" value="${h(n.pt||'')}">`;
   x+=`<div class="muted" id="pgl" style="margin-top:4px">${pgResumo(o)}</div>`;return x}
 function pgResumo(o){if(!o)return '';if(o.forma==='pix')return 'Pix: sem taxa, você recebe o valor cheio.';
+  if(o.forma==='fiado')return '📒 Fiado em '+o.parcelas+'x: '+o.parc.map(q=>dbr(ymdISO(q.d))+' '+brl(q.v)).join(' · ')+'. Quando o cliente pagar cada parcela, lance no botão 💵 Pagamento do pedido.';
   if(o.taxa==='repassa')return 'O cliente paga a taxa na maquininha. Você recebe o valor cheio: <b>'+brl(o.liquido)+'</b>';
   return o.taxa_pct>0?`Taxa: −${brl(o.taxa_valor)} · você recebe <b>${brl(o.liquido)}</b>`:'Digite a taxa da maquininha para ver quanto você recebe.'}
 function lucroDe(p){const its=(p.itens||[]).filter(i=>i.id);const dsc=(p.itens||[]).filter(i=>!i.id&&/^desconto/i.test(String(i.nome))).reduce((t,i)=>t+i.preco*i.qtd,0);const rec=its.reduce((t,i)=>t+i.preco*i.qtd,0)+dsc;
@@ -846,7 +854,7 @@ function ligarRota(){const R=adm.rota;
 }
 const DIAS_PARADO=2;
 function paradosHtml(){const lim=Date.now()-DIAS_PARADO*864e5;
-  const l=adm.pedidos.filter(p=>!p.arquivado&&p.status==='aguardando_pagamento'&&new Date(p.created_at).getTime()<lim&&aReceber(p)>0).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  const l=adm.pedidos.filter(p=>!p.arquivado&&p.status==='aguardando_pagamento'&&!(p.pagamento&&p.pagamento.forma==='fiado')&&new Date(p.created_at).getTime()<lim&&aReceber(p)>0).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
   if(!l.length)return '';
   return `<details class="box" style="background:linear-gradient(135deg,#fff7ed,#fef3c7);padding:0;overflow:hidden;border:2px solid #fcd34d"><summary style="cursor:pointer;padding:14px 16px;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:18px;font-weight:900;color:#92400e;width:100%">⏰ PEDIDOS PARADOS</span><span style="font-weight:800;color:#fff;background:#d97706;border-radius:999px;padding:3px 10px;font-size:13px">${l.length} sem pagamento há mais de ${DIAS_PARADO} dias</span><span style="margin-left:auto;font-weight:800;color:#92400e;font-size:13px">VER ▾</span></summary>
   <div style="padding:2px 16px 12px"><p class="muted" style="font-size:13px;margin:4px 0">Esses pedidos estão segurando produtos no estoque. Cobre o cliente ou cancele (o estoque volta).</p>${l.map(p=>{const d=Math.floor((Date.now()-new Date(p.created_at))/864e5);return `<div style="padding:10px 0;border-top:1px solid #fcd34d"><div style="font-weight:800;color:#3b1d4a">${h(p.cliente_nome)}</div><div class="muted" style="font-size:13px">Pedido ${h(p.codigo)} · ${dbr(p.created_at)} · há ${d} dias · <b>${brl(aReceber(p))}</b></div><div style="display:flex;gap:6px;margin-top:6px"><button class="btn small" style="background:#d97706;flex:1" data-cb="${p.id}">📣 Cobrar</button><button class="btn small" style="background:#e11d48;flex:1" data-cx="${p.id}">❌ Cancelar</button></div></div>`}).join('')}</div></details>`}
@@ -912,7 +920,7 @@ function aPedidos(){
   document.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.ed);if(!p)return;
     const fi=p.itens.find(i=>!i.id&&/^frete/i.test(String(i.nome)));const di=p.itens.find(i=>!i.id&&/^desconto/i.test(String(i.nome)));
     adm.np={edit:p.id,codigo:p.codigo,cid:p.cliente_id||'',nome:p.cliente_nome||'',tel:p.cliente_tel==='-'?'':(p.cliente_tel||''),end:p.endereco||'',salvar:false,tipo:/^\[ATACADO\]/.test(p.obs||'')?'atacado':'varejo',
-      itens:p.itens.filter(i=>i!==fi&&i!==di).map(i=>({id:i.id,nome:i.nome,preco:Number(i.preco),qtd:i.qtd,imagem:i.imagem||''})),frete:fi?String(fi.preco).replace('.',','):'',desc:di?String(Math.abs(di.preco)).replace('.',','):'',dtipo:'rs',obs:(p.obs||'').replace(/^\[ATACADO\]\s*/,''),status:p.status,pid:'',qtd:'1',dcompra:ymd(p.created_at),dc0:ymd(p.created_at),dpag:p.pago_em?ymd(p.pago_em):'',dp0:p.pago_em?ymd(p.pago_em):'',pe0:p.pago_em||'',...(p.pagamento&&p.pagamento.forma?{pf:p.pagamento.forma,pm:p.pagamento.modo||'avista',pp:p.pagamento.parcelas||2,pr:p.pagamento.taxa||'assume',pt:p.pagamento.taxa_pct!=null?String(p.pagamento.taxa_pct).replace('.',','):''}:{})};
+      itens:p.itens.filter(i=>i!==fi&&i!==di).map(i=>({id:i.id,nome:i.nome,preco:Number(i.preco),qtd:i.qtd,imagem:i.imagem||''})),frete:fi?String(fi.preco).replace('.',','):'',desc:di?String(Math.abs(di.preco)).replace('.',','):'',dtipo:'rs',obs:(p.obs||'').replace(/^\[ATACADO\]\s*/,''),status:p.status,pid:'',qtd:'1',dcompra:ymd(p.created_at),dc0:ymd(p.created_at),dpag:p.pago_em?ymd(p.pago_em):'',dp0:p.pago_em?ymd(p.pago_em):'',pe0:p.pago_em||'',...(p.pagamento&&p.pagamento.forma?{pf:p.pagamento.forma,pm:p.pagamento.modo||'avista',pp:p.pagamento.parcelas||2,pr:p.pagamento.taxa||'assume',pt:p.pagamento.taxa_pct!=null?String(p.pagamento.taxa_pct).replace('.',','):'',fv:(p.pagamento.parc&&p.pagamento.parc[0]&&p.pagamento.parc[0].d)||''}:{})};
     aPedidos();window.scrollTo(0,0)});
   $('#npd').onclick=()=>{adm.np={cid:'',nome:'',tel:'',end:'',salvar:true,tipo:'varejo',itens:[],frete:'',obs:'',status:'aguardando_pagamento',pid:'',qtd:'1'};aPedidos()};
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{const p=adm.pedidos.find(x=>x.id===b.dataset.del);if(!p||!confirm('Excluir o pedido '+p.codigo+' de '+p.cliente_nome+'? Isso não pode ser desfeito.'))return;try{await api('/rest/v1/loja_pedidos?id=eq.'+p.id,{method:'DELETE'});adm.pedidos=adm.pedidos.filter(x=>x.id!==p.id);toast('Pedido excluído');drawAdmin()}catch(e){toast(e.message)}});
@@ -958,7 +966,7 @@ function aPedidoForm(){
   const n=adm.np;if(n.dcompra===undefined){n.dcompra=ymd(new Date());n.dc0=n.dcompra;n.dpag='';n.dp0='';n.pe0=''}
   const cap=()=>{if(!$('#npst'))return;if($('#npc')&&!n.edit)n.cid=$('#npc').value;n.tipo=$('#nptp').value;if($('#npn')){n.nome=$('#npn').value;n.tel=$('#npt').value;n.end=$('#npe').value;if($('#nps'))n.salvar=$('#nps').checked}
     n.dcompra=$('#npdc').value;n.dpag=$('#npdp').value;n.frete=$('#npf').value;n.desc=$('#npd1').value;n.dtipo=$('#npd2').value;n.obs=$('#npo').value;n.status=$('#npst').value;n.pid=$('#npp').value;n.qtd=$('#npq').value;
-    if($('#pgf')){n.pf=$('#pgf').value;if($('#pgm'))n.pm=$('#pgm').value;if($('#pgp'))n.pp=$('#pgp').value;if($('#pgr'))n.pr=$('#pgr').value;if($('#pgt'))n.pt=$('#pgt').value}
+    if($('#pgf')){n.pf=$('#pgf').value;if($('#pgm'))n.pm=$('#pgm').value;if($('#pgp'))n.pp=$('#pgp').value;if($('#pgfv'))n.fv=$('#pgfv').value;if($('#pgr'))n.pr=$('#pgr').value;if($('#pgt'))n.pt=$('#pgt').value}
     document.querySelectorAll('[data-pr]').forEach(e=>{n.itens[+e.dataset.pr].preco=parseFloat(String(e.value).replace(',','.'))||0});
     document.querySelectorAll('[data-qt]').forEach(e=>{n.itens[+e.dataset.qt].qtd=Math.max(1,parseInt(e.value)||1)})};
   const cli=n.edit?null:adm.clientes.find(c=>c.id===n.cid);
@@ -984,7 +992,7 @@ function aPedidoForm(){
   $('#npx').onclick=()=>{adm.np=null;aPedidos()};
   const pgUp=()=>{const e=$('#pgl');if(e)e.innerHTML=pgResumo(pgObj(n,npTotal(n)))};
   const pgRe=()=>{cap();if((n.pf==='debito'||n.pf==='credito')&&!n.pt){const t=txLoad()[txKey(n)];if(t)n.pt=t}aPedidoForm()};
-  ['#pgf','#pgm','#pgp','#pgr'].forEach(id=>{const e=$(id);if(e)e.onchange=()=>{if(id!=='#pgr'&&$('#pgt'))n.pt='';pgRe()}});
+  ['#pgf','#pgm','#pgp','#pgr','#pgfv'].forEach(id=>{const e=$(id);if(e)e.onchange=()=>{if(id!=='#pgr'&&$('#pgt'))n.pt='';pgRe()}});
   if($('#pgt'))$('#pgt').oninput=()=>{cap();pgUp()};
   document.querySelectorAll('[data-ri]').forEach(b=>b.onclick=()=>{cap();n.itens.splice(+b.dataset.ri,1);aPedidoForm()});
   $('#npfc').onclick=async()=>{cap();const bt=$('#npfc'),rs=$('#npfr');const end=($('#npe')&&$('#npe').value)||(cli&&cli.endereco)||n.end||'';
@@ -1012,7 +1020,7 @@ function aPedidoForm(){
     const itens=n.itens.map(i=>({id:i.id,nome:i.nome,preco:i.preco,qtd:i.qtd,imagem:i.imagem}));
     if(npDesc(n)>0)itens.push({id:null,nome:'Desconto',preco:-npDesc(n),qtd:1,imagem:''});
     if(fr>0)itens.push({id:null,nome:'Frete',preco:fr,qtd:1,imagem:''});
-    if(n.pf&&n.pf!=='pix'&&!(n.pf==='credito'&&n.pr==='repassa')&&!(parseFloat(String(n.pt||'').replace(',','.'))>0)&&!confirm('Você não digitou a taxa da maquininha. Salvar assim mesmo (sem taxa)?'))return;
+    if(n.pf&&n.pf!=='pix'&&n.pf!=='fiado'&&!(n.pf==='credito'&&n.pr==='repassa')&&!(parseFloat(String(n.pt||'').replace(',','.'))>0)&&!confirm('Você não digitou a taxa da maquininha. Salvar assim mesmo (sem taxa)?'))return;
     const pagamento=pgObj(n,npTotal(n));if(pagamento&&pagamento.taxa_pct>0)txSave(txKey(n),String(pagamento.taxa_pct).replace('.',','));
     const tx=pagamento&&pagamento.taxa==='assume'?pagamento.taxa_valor:0;
     const snp=its=>{const o=snapItens(its);if(o.lucro!=null)o.lucro=R2(o.lucro-tx);return o};
