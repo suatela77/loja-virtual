@@ -1338,6 +1338,7 @@ function aForn(){
   if(adm.nc)return aNovoPedForn();
   const fe=adm.fedit||{nome:'',whatsapp:'',obs:''};
   const resumoIt=c=>(c.itens||[]).map(i=>i.qtd+'x '+h(i.nome)).join(', ')+(()=>{const t=(c.itens||[]).reduce((a,i)=>a+(i.custo>0?i.custo*i.qtd:0),0);return t>0?`<div style="font-weight:900;margin-top:4px">💰 Total: ${brl(t)}</div>`:''})();
+  const arqv=adm.cv==='arq';const nA=adm.compras.filter(c=>c.arquivado).length;const recC=adm.compras.filter(c=>!c.arquivado&&c.status==='recebido');const LST=adm.compras.filter(c=>!!c.arquivado===arqv);
   $('#ad').innerHTML=`<button class="btn block" id="fnp">📲 Fazer pedido ao fornecedor</button><p></p>
   <div class="box"><h3>${fe.id?'✏️ Editar fornecedor':'➕ Cadastrar fornecedor'}</h3>
   <label for="fn">Nome</label><input class="f" id="fn" value="${h(fe.nome)}">
@@ -1349,9 +1350,9 @@ function aForn(){
   <p></p><button class="btn block" id="fs">${fe.id?'Salvar':'Cadastrar'}</button>${fe.id?'<p></p><button class="btn block ghost" id="fc">Cancelar</button>':''}</div>`+
   (adm.forn.length?adm.forn.map(f=>`<div class="box"><b style="font-size:18px">${h(f.nome)}</b><div class="muted">📞 ${h(f.whatsapp||'sem WhatsApp')}</div>${f.obs?`<div class="muted">${h(f.obs)}</div>`:''}<div class="muted">🛍️ ${(f.produtos||[]).length?(f.produtos.length+' produto(s) cadastrados'):'nenhum produto marcado (aparecem todos no pedido)'}</div>
   <div class="pbt"><button class="btn small" data-fp="${f.id}">📲 Fazer pedido</button><button class="btn small ghost" data-fe="${f.id}">✏️ Editar</button><button class="btn small" style="background:#e53935" data-fd="${f.id}">🗑️</button></div></div>`).join(''):'<div class="empty"><div class="big">🏭</div><h2>Nenhum fornecedor ainda</h2></div>')+
-  (adm.compras.length?`<h3 style="margin:18px 0 8px">Pedidos feitos</h3>`+adm.compras.map(c=>`<div class="box"><div class="row"><b class="grow">${h(c.fornecedor_nome||'Fornecedor')}</b><span class="tag" style="background:${c.status==='recebido'?'#16a34a':'#f59e0b'}">${c.status==='recebido'?'Recebido':'Enviado'}</span></div>
+  (adm.compras.length?`<h3 style="margin:18px 0 8px">Pedidos feitos</h3><div style="margin:8px 0"><button class="chip ${arqv?'':'on'}" data-cv="ativos">Em andamento (${adm.compras.length-nA})</button><button class="chip ${arqv?'on':''}" data-cv="arq">📁 Arquivados (${nA})</button></div>`+(!arqv&&recC.length?`<button class="btn block ghost" id="carall">📁 Arquivar os ${recC.length} já recebidos</button><p></p>`:'')+(LST.length?'':`<div class="empty"><div class="big">${arqv?'📁':'📭'}</div><h2>${arqv?'Nenhum pedido arquivado':'Nenhum pedido em andamento'}</h2></div>`)+LST.map(c=>`<div class="box"><div class="row"><b class="grow">${h(c.fornecedor_nome||'Fornecedor')}</b><span class="tag" style="background:${c.status==='recebido'?'#16a34a':'#f59e0b'}">${c.status==='recebido'?'Recebido':'Enviado'}</span></div>
   <div class="muted">${dbr(c.created_at)}</div><div>${resumoIt(c)}</div>${c.obs?`<div class="muted">Obs.: ${h(c.obs)}</div>`:''}
-  <div class="pbt">${c.status==='recebido'?'':`<button class="btn small" data-cr="${c.id}">✅ Chegou (somar ao estoque)</button>`}<button class="btn small ghost" data-ce="${c.id}">✏️ Editar</button><button class="btn small ghost" data-cw="${c.id}">📲 Reenviar</button><button class="btn small" style="background:#e53935" data-cd="${c.id}">🗑️</button></div></div>`).join(''):'');
+  <div class="pbt">${c.status==='recebido'?'':`<button class="btn small" data-cr="${c.id}">✅ Chegou (somar ao estoque)</button>`}<button class="btn small ghost" data-ce="${c.id}">✏️ Editar</button><button class="btn small ghost" data-cw="${c.id}">📲 Reenviar</button><button class="btn small ghost" data-car="${c.id}">${c.arquivado?'↩️ Desarquivar':'📁 Arquivar'}</button><button class="btn small" style="background:#e53935" data-cd="${c.id}">🗑️</button></div></div>`).join(''):'');
   $('#fnp').onclick=()=>{adm.nc={fid:'',itens:[],obs:''};aForn()};
   $('#fs').onclick=async()=>{const nome=$('#fn').value.trim();if(!nome){toast('Informe o nome');return}
     const j={nome,whatsapp:$('#fw').value.trim()||null,obs:$('#fo').value.trim()||null,produtos:[...document.querySelectorAll('[data-fpc]:checked')].map(x=>x.dataset.fpc)};
@@ -1369,6 +1370,10 @@ function aForn(){
     if(!f||!f.whatsapp){toast('Fornecedor sem WhatsApp cadastrado');return}window.open('https://wa.me/'+foneWa(f.whatsapp)+'?text='+encodeURIComponent(msgForn(f,c.itens||[],c.obs)),'_blank')});
   document.querySelectorAll('[data-cd]').forEach(b=>b.onclick=async()=>{if(!confirm('Excluir este pedido do histórico?'))return;
     try{await api('/rest/v1/loja_compras?id=eq.'+b.dataset.cd,{method:'DELETE'});await loadForn();aForn()}catch(e){toast(e.message)}});
+  const arqC=async(lista,val)=>{try{for(const c of lista){await api('/rest/v1/loja_compras?id=eq.'+c.id,{method:'PATCH',json:{arquivado:val}});c.arquivado=val}}catch(e){toast(/arquivado|column|schema cache/i.test(e.message)?'Falta rodar o comando novo no Supabase (arquivar pedidos aos fornecedores).':e.message);return false}return true};
+  document.querySelectorAll('[data-car]').forEach(b=>b.onclick=async()=>{const c=adm.compras.find(x=>x.id===b.dataset.car);if(c&&await arqC([c],!c.arquivado)){toast(c.arquivado?'Pedido arquivado 📁':'Pedido desarquivado');aForn()}});
+  if($('#carall'))$('#carall').onclick=async()=>{if(!confirm('Arquivar '+recC.length+' pedido(s) já recebidos? Continuam salvos na aba Arquivados.'))return;if(await arqC(recC,true)){toast('Pedidos arquivados 📁');aForn()}};
+  document.querySelectorAll('[data-cv]').forEach(b=>b.onclick=()=>{adm.cv=b.dataset.cv;aForn()});
   document.querySelectorAll('[data-cr]').forEach(b=>b.onclick=async()=>{const c=adm.compras.find(x=>x.id===b.dataset.cr);
     const somar=(c.itens||[]).filter(i=>i.pid&&prods.find(p=>String(p.id)===String(i.pid)&&p.estoque!=null));
     if(!confirm('Marcar como recebido'+(somar.length?' e somar '+somar.length+' item(ns) ao estoque?':'?')))return;
