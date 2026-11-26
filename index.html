@@ -860,12 +860,21 @@ function paradosHtml(){const lim=Date.now()-DIAS_PARADO*864e5;
   <div style="padding:2px 16px 12px"><p class="muted" style="font-size:13px;margin:4px 0">Esses pedidos estão segurando produtos no estoque. Cobre o cliente ou cancele (o estoque volta).</p>${l.map(p=>{const d=Math.floor((Date.now()-new Date(p.created_at))/864e5);return `<div style="padding:10px 0;border-top:1px solid #fcd34d"><div style="font-weight:800;color:#3b1d4a">${h(p.cliente_nome)}</div><div class="muted" style="font-size:13px">Pedido ${h(p.codigo)} · ${dbr(p.created_at)} · há ${d} dias · <b>${brl(aReceber(p))}</b></div><div style="display:flex;gap:6px;margin-top:6px"><button class="btn small" style="background:#d97706;flex:1" data-cb="${p.id}">📣 Cobrar</button><button class="btn small" style="background:#e11d48;flex:1" data-cx="${p.id}">❌ Cancelar</button></div></div>`}).join('')}</div></details>`}
 function pagLista(p){if(Array.isArray(p.pagamentos))return p.pagamentos.map(x=>({v:Number(x.v)||0,em:x.em||null}));
   return p.pago_valor!=null&&Number(p.pago_valor)>0?[{v:Number(p.pago_valor),em:p.pago_em||null,ant:true}]:[]}
+function msgPag(p,v){const t=Number(p.total)||0;const pago=R2(pagLista(p).reduce((a,x)=>a+x.v,0));const f=Math.max(0,R2(t-pago));
+  const nome1=String(p.cliente_nome||'').trim().split(/\s+/)[0]||'';const n1=nome1?nome1.charAt(0)+nome1.slice(1).toLowerCase():'';
+  let m=`Olá${n1?', '+n1:''}! 😊 Recebi seu pagamento${v>0?' de '+brl(v):''} do pedido ${p.codigo} na ${cfg.nome}. Muito obrigado! 🧡\n\n💰 Total do pedido: ${brl(t)}\n✅ Já pago: ${brl(pago)}\n`;
+  if(f>0.005){m+=`⏳ Falta pagar: ${brl(f)}\n`;const g=p.pagamento;
+    if(g&&g.forma==='fiado'&&Array.isArray(g.parc)){let cum=0;const pr=g.parc.find(q=>{cum=R2(cum+q.v);return cum>pago+0.005});if(pr)m+=`📅 Próxima parcela: ${dbr(ymdISO(pr.d))} · ${brl(Math.min(pr.v,f))}\n`}
+    if(cfg.pix_chave)m+=`\nPix: ${cfg.pix_chave}${cfg.pix_nome?' ('+cfg.pix_nome+')':''}\n`}
+  else m+=`\n🎉 Pedido quitado! Não falta mais nada. Foi um prazer atender você!\n`;
+  return m}
+function avisarPag(p,v){const num='55'+String(p.cliente_tel||'').replace(/\D/g,'').replace(/^55/,'');window.open('https://wa.me/'+num+'?text='+encodeURIComponent(msgPag(p,v)),'_blank')}
 function pagHtml(p){const l=pagLista(p);const pago=R2(l.reduce((t,x)=>t+x.v,0));const t=Number(p.total)||0;const falta=Math.max(0,R2(t-pago));
   return `<div class="box" id="pay-${p.id}" style="background:#f0fdfa;border:2px solid #5eead4;margin-top:10px"><b>💵 Pagamentos</b>
   ${l.length?l.map((x,k)=>`<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px dashed #99f6e4"><div><b>${brl(x.v)}</b><div class="muted" style="font-size:13px">${x.em?dbr(x.em):(x.ant?'lançado antes (sem data)':'sem data')}</div></div><button class="btn small" style="background:#e53935" data-pgd="${k}" aria-label="Apagar pagamento">🗑️</button></div>`).join(''):'<p class="muted">Nenhum pagamento lançado ainda.</p>'}
   <div style="border-top:2px solid #5eead4;padding-top:8px;margin-top:4px">Pago: <b>${brl(pago)}</b> de ${brl(t)} · ${pago>t+0.005?`<b style="color:#e11d48">⚠️ a mais ${brl(pago-t)}</b>`:falta>0?`<b style="color:#b45309">Falta ${brl(falta)}</b>`:'<b style="color:#166534">Quitado ✅</b>'}</div>
   <div class="row" style="gap:8px;margin-top:8px"><div class="grow"><label for="pgv">Valor (R$)</label><input class="f" id="pgv" inputmode="decimal" value="${falta>0?String(falta).replace('.',','):''}"></div><div class="grow"><label for="pgdt">Data</label><input class="f" id="pgdt" type="date" value="${ymd(new Date())}"></div></div>
-  <p></p><button class="btn block" style="background:#0d9488" id="pgadd">+ Lançar pagamento</button></div>`}
+  <p></p><button class="btn block" style="background:#0d9488" id="pgadd">+ Lançar pagamento</button>${l.length?`<p></p><button class="btn block" style="background:#25d366" id="pgwa">📲 Agradecer e avisar o saldo ao cliente</button>`:''}</div>`}
 async function salvarPag(p,l){const pago=R2(l.reduce((t,x)=>t+x.v,0));const t=Number(p.total)||0;const quit=l.length>0&&pago>=t-0.005;
   const upd={pagamentos:l.map(x=>({v:R2(x.v),em:x.em})),pago_valor:l.length?pago:null};
   if(quit&&(p.status==='aguardando_pagamento'||p.status==='comprovante_enviado')){upd.status='pago';Object.assign(upd,snapItens(p.itens))}
@@ -876,7 +885,8 @@ async function salvarPag(p,l){const pago=R2(l.reduce((t,x)=>t+x.v,0));const t=Nu
 function ligarPag(id){const p=adm.pedidos.find(x=>x.id===id);if(!p||!$('#pgadd'))return;
   $('#pgadd').onclick=async()=>{const v=parseFloat(String($('#pgv').value).replace(',','.'));if(isNaN(v)||v<=0){toast('Digite o valor pago');return}
     const d=$('#pgdt').value;const l=pagLista(p);l.push({v,em:d?ymdISO(d):new Date().toISOString()});
-    $('#pgadd').disabled=true;try{const q=await salvarPag(p,l);toast(q?'Pedido quitado ✅':'Pagamento lançado 💵');aPedidos()}catch(e){toast(e.message);$('#pgadd').disabled=false}};
+    $('#pgadd').disabled=true;try{const q=await salvarPag(p,l);toast(q?'Pedido quitado ✅':'Pagamento lançado 💵');aPedidos();if(p.cliente_tel&&p.cliente_tel!=='-'&&confirm('Pagamento lançado! Enviar agradecimento ao cliente pelo WhatsApp, com total, valor pago e quanto falta?'))avisarPag(p,v)}catch(e){toast(e.message);$('#pgadd').disabled=false}};
+  if($('#pgwa'))$('#pgwa').onclick=()=>{const l=pagLista(p);avisarPag(p,l.length?l[l.length-1].v:0)};
   document.querySelectorAll('[data-pgd]').forEach(b=>b.onclick=async()=>{const l=pagLista(p);const x=l[+b.dataset.pgd];if(!x||!confirm('Apagar o pagamento de '+brl(x.v)+(x.em?' ('+dbr(x.em)+')':'')+'?'))return;
     l.splice(+b.dataset.pgd,1);try{await salvarPag(p,l);toast('Pagamento apagado');aPedidos()}catch(e){toast(e.message)}});
 }
